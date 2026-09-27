@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sac_localization_adapters</name>
+  <version>0.1.0</version>
+  <description>
+    Sensor adapters for sac_localization: turn ROS messages (IMU, GNSS, wheels, odometry,
+    poses, headings, vendor GNSS/INS messages) into the filter's measurements.
+  </description>
+  <maintainer email="yunus.akdal@gmail.com">Yunus Ahmet AKDAL</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>sac_localization</depend>
+  <depend>pluginlib</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_eigen</depend>
+  <!-- Optional: adapters for these are built only when the packages are installed -->
+  <!-- geographic_msgs, gps_msgs, ublox_msgs -->
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
