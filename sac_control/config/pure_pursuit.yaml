@@ -1,0 +1,16 @@
+pure_pursuit:
+  ros__parameters:
+    # The car (sac_description)
+    wheel_base: 1.873
+    max_steering: 0.6          # [rad]
+    # Driving limits; the car itself does 20 m/s
+    max_speed: 10.0            # [m/s]
+    max_lateral_acceleration: 3.0
+    max_acceleration: 2.0
+    max_deceleration: 4.0
+    # Lookahead = min + gain * speed, at most max [m]
+    lookahead_min: 4.0
+    lookahead_gain: 0.6
+    lookahead_max: 20.0
+    # Stop when further than this from the path [m]
+    max_off_path: 4.0

@@ -1,0 +1,11 @@
+# Sonoma Raceway. The datum is the origin of the map frame; in the simulation it is the
+# world's <spherical_coordinates> (gazebo_environment/worlds/sonoma.sdf), and the real car's
+# localization must use the same one.
+route_planner:
+  ros__parameters:
+    route: sonoma_lap.geojson
+    datum:
+      latitude: 38.1628083
+      longitude: -122.4579944
+      altitude: 0.0
+      heading: 0.83   # [deg] counter-clockwise from east to the map's x axis
