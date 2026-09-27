@@ -1,0 +1,227 @@
+<?xml version="1.0"?>
+<!--
+  SAC: a Mercedes smart fortwo sized car (rear-wheel drive, Ackermann steering) with a
+  ZED 2 stereo camera, a Velodyne VLP-16 lidar, three IMUs and two GNSS antennas on a roof
+  rack.
+
+  The one description of the car, used by the real car (robot_state_publisher) and by the
+  simulation (gazebo_environment adds the Gazebo sensors and plugins on top). All
+  dimensions, limits and sensor mounts are properties below; values marked "not measured"
+  come from the smart fortwo (W453) datasheet or are estimates, not from the real car.
+
+  Frames (REP 103/105): x forward, y left, z up. base_footprint lies on the ground under
+  the middle of the car; wheels turn in the positive direction when the car drives forward.
+-->
+<robot name="sac" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <xacro:include filename="$(find sac_description)/urdf/common_properties.urdf.xacro" />
+  <xacro:include filename="$(find sac_description)/urdf/sensors.urdf.xacro" />
+  <xacro:include filename="$(find sac_description)/urdf/roof_rack.urdf.xacro" />
+
+  <!-- ============ Vehicle parameters (smart fortwo W453; not measured) ============ -->
+  <xacro:property name="wheel_base" value="1.873" />      <!-- front axle to rear axle [m] -->
+  <xacro:property name="front_track" value="1.469" />     <!-- left to right wheel centre [m] -->
+  <xacro:property name="rear_track" value="1.430" />
+  <xacro:property name="wheel_radius" value="0.30" />     <!-- 165/65 R15 front, 185/60 R15 rear -->
+  <xacro:property name="wheel_width" value="0.175" />
+  <xacro:property name="wheel_mass" value="15.0" />
+  <!-- 6.95 m turning circle -->
+  <xacro:property name="steering_limit" value="0.6" />    <!-- [rad] -->
+
+  <!-- Body, used for collisions and inertia -->
+  <xacro:property name="body_length" value="2.695" />
+  <xacro:property name="body_width" value="1.663" />
+  <xacro:property name="body_bottom" value="0.15" />      <!-- ground clearance [m] -->
+  <xacro:property name="body_top" value="1.555" />
+  <xacro:property name="body_mass" value="820.0" />       <!-- ~880 kg kerb weight without wheels -->
+  <!-- Centre of mass: rear engine, ~40/60 front/rear axle load, low in the car -->
+  <xacro:property name="com_x" value="${-wheel_base / 2 + 0.4 * wheel_base}" />
+  <xacro:property name="com_z" value="0.55" />
+
+  <xacro:property name="max_speed" value="20.0" />        <!-- [m/s] forward -->
+  <xacro:property name="max_reverse_speed" value="5.0" />
+  <xacro:property name="max_acceleration" value="3.0" />  <!-- [m/s^2] -->
+  <xacro:property name="max_deceleration" value="7.0" />  <!-- braking [m/s^2] -->
+
+  <!-- Roof rack (aluminium profiles). Width from photos of the real car, scaled by the ZED 2's
+       known 175 mm width; length fits the flat part of the roof (x 0 to -0.9, y +-0.45). -->
+  <xacro:property name="roof_z" value="${body_top}" />      <!-- highest point of the roof -->
+  <xacro:property name="rack_base_z" value="1.53" />       <!-- roof height under the rack's feet -->
+  <xacro:property name="rack_front_x" value="0.0" />        <!-- front bar, at the top of the windshield -->
+  <xacro:property name="rack_rear_x" value="-0.9" />
+  <xacro:property name="rack_half_width" value="0.375" />
+  <xacro:property name="rack_clearance" value="0.05" />     <!-- feet: roof to the bottom of the profiles -->
+  <xacro:property name="rack_profile" value="0.04" />       <!-- 40 x 40 mm profile -->
+  <xacro:property name="rack_top_z" value="${rack_base_z + rack_clearance + rack_profile}" />
+  <xacro:property name="rack_mid_x" value="${(rack_front_x + rack_rear_x) / 2}" />
+
+  <!-- Sensor mounts. The camera, lidar and GNSS antennas are on the roof rack and given
+       relative to its frame (middle of the rack, top of the profiles); the IMUs are on the
+       chassis, relative to base_footprint. -->
+  <xacro:property name="rack_front" value="${rack_front_x - rack_mid_x}" />  <!-- front bar, in the rack frame -->
+  <!-- ZED 2 on a 10 cm ball head in the middle of the front bar, level -->
+  <xacro:property name="camera_xyz" value="${rack_front} 0 0.10" />
+  <xacro:property name="camera_pitch" value="0.0" />      <!-- [rad], positive tilts down -->
+  <!-- VLP-16 on a post on the cross bar, in the middle of the rack, its base 20 cm above
+       the roof (measured); the lidar frame is its optical centre, 37.7 mm above the base -->
+  <xacro:property name="lidar_base_above_roof" value="0.20" />
+  <xacro:property name="lidar_xyz" value="0 0 ${roof_z + lidar_base_above_roof - rack_top_z + 0.0377}" />
+  <!-- Two GNSS antennas at opposite corners of the rack: front right and rear left -->
+  <xacro:property name="rack_rear" value="${rack_rear_x - rack_mid_x}" />    <!-- rear bar, in the rack frame -->
+  <xacro:property name="gnss_antenna_y" value="${rack_half_width - 0.03}" />
+  <xacro:property name="gnss_front_right_xy" value="${rack_front} ${-gnss_antenna_y}" />
+  <xacro:property name="gnss_rear_left_xy" value="${rack_rear} ${gnss_antenna_y}" />
+  <xacro:property name="gnss_antenna_z" value="0.07" />   <!-- antenna phase centre above the rack -->
+  <!-- Three IMUs on the chassis, on the centre line (not measured): in the middle of the
+       car, over the front axle and over the rear axle -->
+  <xacro:property name="middle_imu_xyz" value="0 0 0.5" />
+  <xacro:property name="front_imu_xyz" value="${wheel_base / 2} 0 0.5" />
+  <xacro:property name="back_imu_xyz" value="${-wheel_base / 2} 0 0.5" />
+
+  <!-- ============================== Body ============================== -->
+  <link name="base_footprint" />
+
+  <joint name="joint_base_footprint_base_link" type="fixed">
+    <parent link="base_footprint" />
+    <child link="base_link" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+
+  <link name="base_link">
+    <xacro:inertial_dummy />
+  </link>
+
+  <joint name="joint_base_link_chassis" type="fixed">
+    <parent link="base_link" />
+    <child link="link_chassis" />
+    <origin xyz="0 0 0" rpy="0 0 0" />
+  </joint>
+
+  <xacro:property name="body_height" value="${body_top - body_bottom}" />
+  <xacro:property name="body_center_z" value="${(body_top + body_bottom) / 2}" />
+
+  <link name="link_chassis">
+    <visual name="chassis_visual">
+      <!-- A smart fortwo, Y-up; the scale makes it 2.695 x 1.663 x 1.555 m -->
+      <origin xyz="0 0 0" rpy="${pi/2} 0 ${pi/2}" />
+      <geometry>
+        <mesh filename="package://sac_description/meshes/smart_car.obj" scale="0.0125 0.0129 0.0135" />
+      </geometry>
+      <material name="white">
+        <color rgba="0.9 0.9 0.9 1.0" />
+      </material>
+    </visual>
+
+    <collision>
+      <origin xyz="0 0 ${body_center_z}" rpy="0 0 0" />
+      <geometry>
+        <box size="${body_length} ${body_width} ${body_height}" />
+      </geometry>
+    </collision>
+
+    <xacro:inertial_cuboid_with_pose mass="${body_mass}" x="${body_length}" y="${body_width}" z="${body_height}">
+      <origin xyz="${com_x} 0 ${com_z}" rpy="0 0 0" />
+    </xacro:inertial_cuboid_with_pose>
+  </link>
+
+  <!-- ============================== Wheels ============================== -->
+  <xacro:property name="max_wheel_speed" value="${max_speed / wheel_radius * 1.2}" />  <!-- [rad/s] -->
+
+  <!-- The joint frame is turned so that its z axis points to the car's left (+y):
+       positive rotation about it rolls the car forward. -->
+  <xacro:macro name="wheel_link" params="name">
+    <link name="${name}">
+      <xacro:inertial_cylinder mass="${wheel_mass}" radius="${wheel_radius}" length="${wheel_width}" />
+      <visual name="${name}_visual">
+        <geometry>
+          <cylinder radius="${wheel_radius}" length="${wheel_width}" />
+        </geometry>
+        <material name="black">
+          <color rgba="0.1 0.1 0.1 1" />
+        </material>
+      </visual>
+      <!-- A sphere touches the ground in a single point, which is steadier than a
+           cylinder's edge in the physics engine -->
+      <collision>
+        <geometry>
+          <sphere radius="${wheel_radius}" />
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+  <xacro:macro name="rear_wheel" params="side y">
+    <xacro:wheel_link name="rear_${side}_wheel" />
+    <joint name="rear_${side}_wheel_joint" type="continuous">
+      <parent link="link_chassis" />
+      <child link="rear_${side}_wheel" />
+      <origin xyz="${-wheel_base / 2} ${y} ${wheel_radius}" rpy="${-pi/2} 0 0" />
+      <axis xyz="0 0 1" />
+      <limit effort="1000" velocity="${max_wheel_speed}" />
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="front_wheel" params="side y">
+    <!-- 1 kg: a much lighter link between two joints makes the physics unsteady -->
+    <link name="front_${side}_wheel_steering_link">
+      <xacro:inertial_cuboid mass="1.0" x="0.1" y="0.1" z="0.1" />
+    </link>
+    <!-- Same frame as the wheel joint, so the steering axis is its -y (the car's up) -->
+    <joint name="front_${side}_wheel_steering_joint" type="revolute">
+      <parent link="link_chassis" />
+      <child link="front_${side}_wheel_steering_link" />
+      <origin xyz="${wheel_base / 2} ${y} ${wheel_radius}" rpy="${-pi/2} 0 0" />
+      <axis xyz="0 -1 0" />
+      <limit effort="1000" velocity="10" lower="${-steering_limit}" upper="${steering_limit}" />
+    </joint>
+
+    <xacro:wheel_link name="front_${side}_wheel" />
+    <joint name="front_${side}_wheel_rotating_joint" type="continuous">
+      <parent link="front_${side}_wheel_steering_link" />
+      <child link="front_${side}_wheel" />
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <axis xyz="0 0 1" />
+      <limit effort="1000" velocity="${max_wheel_speed}" />
+    </joint>
+  </xacro:macro>
+
+  <xacro:rear_wheel side="left" y="${rear_track / 2}" />
+  <xacro:rear_wheel side="right" y="${-rear_track / 2}" />
+  <xacro:front_wheel side="left" y="${front_track / 2}" />
+  <xacro:front_wheel side="right" y="${-front_track / 2}" />
+
+  <!-- ============================== Sensors ============================== -->
+  <xacro:roof_rack parent_link="link_chassis" roof_z="${rack_base_z}" front_x="${rack_front_x}"
+    rear_x="${rack_rear_x}" half_width="${rack_half_width}" clearance="${rack_clearance}"
+    profile="${rack_profile}" post_height="${roof_z + lidar_base_above_roof - rack_top_z}"
+    antenna1_xy="${gnss_front_right_xy}" antenna2_xy="${gnss_rear_left_xy}" />
+
+  <xacro:zed2 name="front_camera" parent_link="roof_rack">
+    <origin xyz="${camera_xyz}" rpy="0 ${camera_pitch} 0" />
+  </xacro:zed2>
+
+  <xacro:imu name="middle_imu" parent_link="link_chassis">
+    <origin xyz="${middle_imu_xyz}" rpy="0 0 0" />
+  </xacro:imu>
+
+  <xacro:imu name="front_imu" parent_link="link_chassis">
+    <origin xyz="${front_imu_xyz}" rpy="0 0 0" />
+  </xacro:imu>
+
+  <xacro:imu name="back_imu" parent_link="link_chassis">
+    <origin xyz="${back_imu_xyz}" rpy="0 0 0" />
+  </xacro:imu>
+
+  <!-- Two antennas; the heading follows from their two positions -->
+  <xacro:navsat name="navsat_front_right" parent_link="roof_rack">
+    <origin xyz="${gnss_front_right_xy} ${gnss_antenna_z}" rpy="0 0 0" />
+  </xacro:navsat>
+  <xacro:navsat name="navsat_rear_left" parent_link="roof_rack">
+    <origin xyz="${gnss_rear_left_xy} ${gnss_antenna_z}" rpy="0 0 0" />
+  </xacro:navsat>
+
+  <xacro:vlp16 name="roof_lidar" parent_link="roof_rack">
+    <origin xyz="${lidar_xyz}" rpy="0 0 0" />
+  </xacro:vlp16>
+
+</robot>

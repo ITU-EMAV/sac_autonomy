@@ -1,0 +1,137 @@
+<?xml version="1.0"?>
+<!--
+  Sensor frames and looks: where each sensor sits and how its frames are named. Nothing here
+  simulates a sensor; gazebo_environment adds the simulated sensors to these frames, and on
+  the real car the drivers publish in them.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+    <!-- ============================== IMU ============================== -->
+    <!-- Frame <name>_frame unless given; joint <frame>_joint -->
+    <xacro:macro name="imu" params="name parent_link *origin frame:=''">
+        <xacro:property name="base_frame" value="${frame if frame else name + '_frame'}" />
+
+        <joint name="${base_frame}_joint" type="fixed">
+            <parent link="${parent_link}" />
+            <child link="${base_frame}" />
+            <xacro:insert_block name="origin" />
+        </joint>
+
+        <link name="${base_frame}">
+            <xacro:inertial_dummy />
+        </link>
+    </xacro:macro>
+
+    <!-- ============================== GNSS antenna ============================== -->
+    <!-- Frame <name>_frame at the antenna's phase centre; joint <name>_joint -->
+    <xacro:macro name="navsat" params="name parent_link *origin">
+        <joint name="${name}_joint" type="fixed">
+            <parent link="${parent_link}" />
+            <child link="${name}_frame" />
+            <xacro:insert_block name="origin" />
+        </joint>
+
+        <link name="${name}_frame">
+            <xacro:inertial_dummy />
+        </link>
+    </xacro:macro>
+
+    <!-- ============================== Velodyne VLP-16 ============================== -->
+    <!-- Frame <name>_frame at the optical centre, 37.7 mm above the base; joint <name>_joint -->
+    <xacro:property name="vlp16_optical_centre_height" value="0.0377" />
+
+    <xacro:macro name="vlp16" params="name parent_link *origin">
+        <joint name="${name}_joint" type="fixed">
+            <parent link="${parent_link}" />
+            <child link="${name}_frame" />
+            <xacro:insert_block name="origin" />
+        </joint>
+
+        <link name="${name}_frame">
+            <xacro:inertial_dummy />
+            <visual>
+                <!-- The mesh is Y-up, in millimetres, with its origin at the base -->
+                <origin xyz="0 0 ${-vlp16_optical_centre_height}" rpy="${pi/2} 0 ${pi}" />
+                <geometry>
+                    <mesh filename="package://sac_description/meshes/velodyne-vlp16.stl" scale="0.001 0.001 0.001" />
+                </geometry>
+            </visual>
+        </link>
+    </xacro:macro>
+
+    <!-- ============================== Stereolabs ZED 2 ============================== -->
+    <!--
+      Frame names follow the ZED ROS 2 wrapper (<name>_camera_link, _camera_center,
+      _left/right_camera_frame and _optical_frame, _imu_link), so the real camera and the
+      simulation share one TF tree. Run the wrapper with camera_name:=<name> and without its
+      own URDF (publish_urdf:=false), or the frames get two parents.
+    -->
+    <xacro:property name="zed2_baseline" value="0.12" />          <!-- [m] -->
+    <xacro:property name="zed2_size" value="0.030 0.175 0.033" />  <!-- depth, width, height [m] -->
+    <xacro:property name="zed2_height" value="0.033" />
+    <xacro:property name="zed2_mass" value="0.166" />
+
+    <!-- Mounting point: middle of the bottom face -->
+    <xacro:macro name="zed2" params="name parent_link *origin">
+        <!-- Rotation from a body frame (x forward) to an optical frame (z forward) -->
+        <xacro:property name="optical_rpy" value="${-pi/2} 0 ${-pi/2}" />
+
+        <joint name="${name}_camera_joint" type="fixed">
+            <parent link="${parent_link}" />
+            <child link="${name}_camera_link" />
+            <xacro:insert_block name="origin" />
+        </joint>
+        <link name="${name}_camera_link">
+            <xacro:inertial_dummy />
+        </link>
+
+        <joint name="${name}_camera_center_joint" type="fixed">
+            <parent link="${name}_camera_link" />
+            <child link="${name}_camera_center" />
+            <origin xyz="0 0 ${zed2_height / 2}" rpy="0 0 0" />
+        </joint>
+        <link name="${name}_camera_center">
+            <visual>
+                <geometry>
+                    <box size="${zed2_size}" />
+                </geometry>
+                <material name="zed_gray">
+                    <color rgba="0.15 0.15 0.15 1" />
+                </material>
+            </visual>
+            <collision>
+                <geometry>
+                    <box size="${zed2_size}" />
+                </geometry>
+            </collision>
+            <xacro:inertial_cuboid mass="${zed2_mass}" x="0.030" y="0.175" z="0.033" />
+        </link>
+
+        <xacro:macro name="zed2_eye" params="side y">
+            <joint name="${name}_${side}_camera_joint" type="fixed">
+                <parent link="${name}_camera_center" />
+                <child link="${name}_${side}_camera_frame" />
+                <origin xyz="0 ${y} 0" rpy="0 0 0" />
+            </joint>
+            <link name="${name}_${side}_camera_frame">
+                <xacro:inertial_dummy />
+            </link>
+
+            <joint name="${name}_${side}_camera_optical_joint" type="fixed">
+                <parent link="${name}_${side}_camera_frame" />
+                <child link="${name}_${side}_camera_optical_frame" />
+                <origin xyz="0 0 0" rpy="${optical_rpy}" />
+            </joint>
+            <link name="${name}_${side}_camera_optical_frame">
+                <xacro:inertial_dummy />
+            </link>
+        </xacro:macro>
+        <xacro:zed2_eye side="left" y="${zed2_baseline / 2}" />
+        <xacro:zed2_eye side="right" y="${-zed2_baseline / 2}" />
+
+        <!-- IMU at the camera centre (the real offset comes from the camera's calibration) -->
+        <xacro:imu name="${name}" frame="${name}_imu_link" parent_link="${name}_camera_center">
+            <origin xyz="0 0 0" rpy="0 0 0" />
+        </xacro:imu>
+    </xacro:macro>
+</robot>

@@ -1,0 +1,96 @@
+<?xml version="1.0"?>
+<!--
+  Aluminium-profile roof rack that carries the sensors: a rectangular frame on feet with a
+  cross bar through the middle, a post on the cross bar for the lidar, a ball head for the
+  camera and two GNSS antenna pucks at opposite corners. Visual only (no
+  collisions), with a small mass.
+
+  The rack frame "roof_rack" sits in the middle of the rack, on the top of the profiles
+  (x forward, z up), so sensor mounts can be given, and measured on the real car, relative
+  to the rack. Arguments are in the parent's frame.
+-->
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+    <xacro:macro name="roof_rack" params="parent_link roof_z front_x rear_x half_width clearance profile post_height antenna1_xy antenna2_xy">
+        <xacro:property name="length" value="${front_x - rear_x}" />
+        <!-- Rack frame in the parent's coordinates -->
+        <xacro:property name="ox" value="${(front_x + rear_x) / 2}" />
+        <xacro:property name="oz" value="${roof_z + clearance + profile}" />
+        <!-- In the rack frame -->
+        <xacro:property name="front" value="${front_x - ox}" />
+        <xacro:property name="rear" value="${rear_x - ox}" />
+        <xacro:property name="bar_z" value="${-profile / 2}" />
+        <xacro:property name="foot_z" value="${-profile - clearance / 2}" />
+
+        <joint name="roof_rack_joint" type="fixed">
+            <parent link="${parent_link}" />
+            <child link="roof_rack" />
+            <origin xyz="${ox} 0 ${oz}" rpy="0 0 0" />
+        </joint>
+
+        <xacro:macro name="rack_box" params="xyz size material:=rack_aluminium">
+            <visual>
+                <origin xyz="${xyz}" rpy="0 0 0" />
+                <geometry>
+                    <box size="${size}" />
+                </geometry>
+                <material name="${material}" />
+            </visual>
+        </xacro:macro>
+
+        <link name="roof_rack">
+            <!-- Frame: front, rear, left, right bars and the cross bar through the middle -->
+            <xacro:rack_box xyz="${front} 0 ${bar_z}" size="${profile} ${2 * half_width} ${profile}" />
+            <xacro:rack_box xyz="${rear} 0 ${bar_z}" size="${profile} ${2 * half_width} ${profile}" />
+            <xacro:rack_box xyz="0 ${half_width} ${bar_z}" size="${length} ${profile} ${profile}" />
+            <xacro:rack_box xyz="0 ${-half_width} ${bar_z}" size="${length} ${profile} ${profile}" />
+            <xacro:rack_box xyz="0 0 ${bar_z}" size="${profile} ${2 * half_width} ${profile}" />
+
+            <!-- Feet on the roof at the four corners -->
+            <xacro:rack_box xyz="${front} ${half_width} ${foot_z}" size="0.06 0.06 ${clearance}" material="rack_plastic" />
+            <xacro:rack_box xyz="${front} ${-half_width} ${foot_z}" size="0.06 0.06 ${clearance}" material="rack_plastic" />
+            <xacro:rack_box xyz="${rear} ${half_width} ${foot_z}" size="0.06 0.06 ${clearance}" material="rack_plastic" />
+            <xacro:rack_box xyz="${rear} ${-half_width} ${foot_z}" size="0.06 0.06 ${clearance}" material="rack_plastic" />
+
+            <!-- Lidar post on the cross bar -->
+            <xacro:rack_box xyz="0 0 ${post_height / 2}" size="0.03 0.03 ${post_height}" />
+
+            <!-- Ball head under the camera, in the middle of the front bar -->
+            <visual>
+                <origin xyz="${front} 0 0.05" rpy="0 0 0" />
+                <geometry>
+                    <cylinder radius="0.02" length="0.10" />
+                </geometry>
+                <material name="rack_black" />
+            </visual>
+
+            <!-- GNSS antenna pucks on blocks (antenna*_xy: x y in the rack frame) -->
+            <xacro:macro name="antenna_puck" params="xy">
+                <xacro:rack_box xyz="${xy} 0.02" size="0.06 0.06 0.04" material="rack_plastic" />
+                <visual>
+                    <origin xyz="${xy} 0.055" rpy="0 0 0" />
+                    <geometry>
+                        <cylinder radius="0.04" length="0.03" />
+                    </geometry>
+                    <material name="rack_black" />
+                </visual>
+            </xacro:macro>
+            <xacro:antenna_puck xy="${antenna1_xy}" />
+            <xacro:antenna_puck xy="${antenna2_xy}" />
+
+            <xacro:inertial_cuboid_with_pose mass="8.0" x="${length}" y="${2 * half_width}" z="${profile}">
+                <origin xyz="0 0 ${bar_z}" rpy="0 0 0" />
+            </xacro:inertial_cuboid_with_pose>
+        </link>
+    </xacro:macro>
+
+    <material name="rack_aluminium">
+        <color rgba="0.75 0.8 0.82 1" />
+    </material>
+    <material name="rack_plastic">
+        <color rgba="0.95 0.95 0.95 1" />
+    </material>
+    <material name="rack_black">
+        <color rgba="0.1 0.1 0.1 1" />
+    </material>
+</robot>
