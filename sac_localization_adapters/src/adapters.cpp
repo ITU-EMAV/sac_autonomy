@@ -317,6 +317,9 @@ void NonholonomicAdapter::initialize(
 
 void NonholonomicAdapter::start(std::shared_ptr<const StateLayout>)
 {
+  if (!params_->getBool("enabled", true)) {
+    return;  // e.g. with a motion model that models the slip itself
+  }
   const double rate = params_->getDouble("rate", 20.0);
   timer_ = rclcpp::create_timer(
     context_.node, context_.node->get_clock(), rclcpp::Duration::from_seconds(1.0 / rate), [this]() { tick(); });

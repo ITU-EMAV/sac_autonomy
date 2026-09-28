@@ -93,7 +93,7 @@ private:
 
 /// No topic: a car does not slide sideways or jump. The lateral and vertical velocity of the
 /// rear axle are 0, at `rate` Hz.
-///   lever_arm: the rear axle in base_footprint; covariance: [lateral, vertical]
+///   lever_arm: the rear axle in base_footprint; covariance: [lateral, vertical]; enabled
 class NonholonomicAdapter : public SensorAdapter
 {
 public:

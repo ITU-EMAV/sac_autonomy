@@ -17,7 +17,7 @@ Both workspaces include this repository as a git submodule under `src/`.
 | `sac_planning` | the path to follow. Method so far: `route_planner`, a route given on the world map (latitude/longitude waypoints, see [Routes](#routes)). |
 | `sac_control` | follows the path: `pure_pursuit` (steering) with a speed profile from the path's curvature |
 | `sac_bringup` | `autonomy.launch.py`: planning and control together |
-| `sac_localization`, `sac_localization_adapters`, `sac_localization_msgs` | state estimation configured from YAML: any number of sensors, exchangeable engines (`ekf`, `iekf`, `ukf`) and motion models (`constant_acceleration`, `imu_driven`, `kinematic_bicycle`) as plugins; a local (`odom`) and a global (`map`) filter. See [DESIGN.md](sac_localization/DESIGN.md). |
+| `sac_localization`, `sac_localization_adapters`, `sac_localization_msgs` | state estimation configured from YAML: any number of sensors, exchangeable engines (`ekf`, `iekf`, `ukf`) and motion models (`constant_acceleration`, `imu_driven`, `kinematic_bicycle`, `dynamic_bicycle`) as plugins; a local (`odom`) and a global (`map`) filter. See [DESIGN.md](sac_localization/DESIGN.md). |
 
 Planned: `sac_perception`.
 

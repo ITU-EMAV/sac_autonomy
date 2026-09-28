@@ -4,7 +4,8 @@ Arguments:
   use_sim_time:=true      in the simulation
   config:=sim             config/<config>_local.yaml and config/<config>_global.yaml
   estimator:=ekf          engine for both filters (default: the config's): ekf | iekf | ukf
-  motion_model:=...       constant_acceleration (the config's) | imu_driven | kinematic_bicycle;
+  motion_model:=...       constant_acceleration (the config's, default) | imu_driven |
+                          kinematic_bicycle | dynamic_bicycle;
                           other models also load config/models/<model>.yaml
 
   ros2 launch sac_localization localization.launch.py use_sim_time:=true estimator:=ukf

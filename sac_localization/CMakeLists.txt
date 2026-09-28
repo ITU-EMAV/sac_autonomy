@@ -84,7 +84,8 @@ if(BUILD_TESTING)
     test/test_state.cpp
     test/test_models.cpp
     test/test_estimators.cpp
-    test/test_fuser.cpp)
+    test/test_fuser.cpp
+    test/test_motion_models.cpp)
   target_link_libraries(test_core sac_localization_core)
 endif()
 

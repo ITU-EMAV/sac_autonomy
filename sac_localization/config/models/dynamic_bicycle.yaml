@@ -1,0 +1,25 @@
+# Overlay: the wheels (speed and steering) drive a dynamic bicycle model with tyre slip.
+# Values for the simulated car (sac_description; tyres from gazebo_environment's dry preset:
+# cornering stiffness = 2 x wheel load / lateral slip compliance).
+/**:
+  ros__parameters:
+    motion_model:
+      type: dynamic_bicycle
+      input: wheels
+      mass: 910.0                 # [kg] the whole car
+      yaw_inertia: 800.0          # [kg m^2]
+      lf: 1.124                   # [m] centre of mass to the front axle
+      lr: 0.749                   # [m] centre of mass to the rear axle
+      cornering_stiffness_front: 35700.0   # [N/rad] per axle
+      cornering_stiffness_rear: 53600.0
+      kinematic_speed: 0.5        # [m/s] below: kinematic model
+      dynamic_speed: 2.0          # [m/s] above: dynamic model
+      speed_noise: 0.1            # [m/s]
+      steering_noise: 0.01        # [rad]
+      lateral_noise: 0.3          # [m/s per sqrt(s)] the tyre model's own error
+    sensors:
+      wheels:
+        as_input: true
+      # The model predicts the sideways slip; the no-slip constraint would fight it
+      nonholonomic:
+        enabled: false

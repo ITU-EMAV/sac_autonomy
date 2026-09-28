@@ -98,6 +98,7 @@ and a sensor's calibration can be estimated online.
 | | later: `iekf`, `particle`, a sliding-window optimizer | |
 | MotionModel | `constant_acceleration` | 3D, no inputs; everything else from measurements |
 | | `kinematic_bicycle` | 2D bicycle, input: wheel speed and steering (wheel adapter `as_input`) |
+| | `dynamic_bicycle` | bicycle with tyre slip (linear tyres, cornering stiffness), backward Euler, blended into the kinematic model below 2 m/s; same inputs |
 | | `imu_driven` | strapdown: an IMU's rates and specific force as input, biases in the state |
 | SensorAdapter | `imu` | `sensor_msgs/Imu`: angular_velocity, linear_acceleration, orientation |
 | | `gnss_position` | `sensor_msgs/NavSatFix` (antenna lever arm from TF; fix status gating) |
@@ -212,12 +213,12 @@ rules for the config:
 
 ## Status
 
-Implemented and tested (13 unit tests in `test/`, plus the simulation):
+Implemented and tested (16 unit tests in `test/`, plus the simulation):
 - core: state on a manifold, geodesy, all measurement models (analytic Jacobians checked
   against numeric ones), the fuser (late measurements are replayed; too late ones dropped;
   a clock jump back restarts the filter)
 - engines: `ekf`, `iekf` (iterated EKF), `ukf`
-- motion models: `constant_acceleration`, `imu_driven`, `kinematic_bicycle`
+- motion models: `constant_acceleration`, `imu_driven`, `kinematic_bicycle`, `dynamic_bicycle`
 - adapters: `imu`, `gnss_position`, `wheel`, `zero_velocity`, `nonholonomic`, `odometry`,
   `twist`, `pose`
 - node: local and global instances, start from the GNSS antennas (position and yaw from the
@@ -284,6 +285,25 @@ took off at 10 m/s and the landing threw it 1.5-4 m sideways or rolled it over, 
 drove it. With the suspension added to sac_description and Gazebo (springs and dampers on
 the wheels) the car stays on the ground there. The tables above use GNSS noise of 0.3 m for
 the replayed comparison and 1 m for `config/sim_global.yaml` now.
+
+### Dynamic bicycle model (tyre slip)
+With the simulated tyres slipping (gazebo_environment's WheelSlip), a lap on wet tyres
+replayed through the motion models (GNSS 1 m):
+
+| Motion model | Position mean / p95 | Yaw mean / p95 |
+|---|---|---|
+| constant_acceleration | 0.24 / 0.52 m | 0.57 / 1.63 deg |
+| kinematic_bicycle | 0.25 / 0.52 m | 0.59 / 1.64 deg |
+| dynamic_bicycle (dry tyre values) | 0.24 / 0.51 m | 0.38 / 0.95 deg |
+| dynamic_bicycle (wet tyre values) | 0.25 / 0.52 m | 0.37 / 0.93 deg |
+
+Modelling the slip cuts the yaw error by 40 %, even with the wrong tyre values. But driving
+on it (closed loop, dry, 10 m/s) was less robust than constant_acceleration: the car went
+3.6 m off the path over the crest after the first hairpin and left the track in the
+north-west hairpin. Likely cause: the wheel speed is the model's input, and when the wheels
+slip lengthwise (landing, hard braking) it is not the car's speed. So constant_acceleration
+stays the default; next step for dynamic_bicycle: take only the steering as input and fuse
+the wheel speed as a measurement.
 
 ## Implementation order (see Status for what is done)
 

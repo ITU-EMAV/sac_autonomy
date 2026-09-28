@@ -17,4 +17,7 @@
   <class name="kinematic_bicycle" type="sac_localization::KinematicBicycle" base_class_type="sac_localization::MotionModel">
     <description>Car model driven by the rear-axle speed and the steering angle</description>
   </class>
+  <class name="dynamic_bicycle" type="sac_localization::DynamicBicycle" base_class_type="sac_localization::MotionModel">
+    <description>Car model with tyre slip (linear tyres), driven by the rear-axle speed and the steering angle</description>
+  </class>
 </library>

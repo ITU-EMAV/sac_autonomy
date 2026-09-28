@@ -1,5 +1,6 @@
 #include "sac_localization/motion_models/motion_models.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -216,6 +217,102 @@ Eigen::MatrixXd KinematicBicycle::processNoise(const State & x, double dt, const
     std::pow(speed / (wheel_base_ * c * c), 2) * steering_noise_ * steering_noise_;
   const StateLayout & layout = x.layout();
   addVariance(Q, layout, blocks::kLinearVelocity, Eigen::Vector3d(speed_var, speed_var * 0.1, speed_var * 0.1));
+  addVariance(Q, layout, blocks::kAngularVelocity, Eigen::Vector3d(0.0, 0.0, yaw_rate_var));
+  addVariance(Q, layout, blocks::kOrientation, Eigen::Vector3d(0.0, 0.0, yaw_rate_var * dt * dt));
+  addVariance(Q, layout, blocks::kPosition, Eigen::Vector3d::Constant(speed_var * dt * dt));
+  return Q;
+}
+
+// ---------------------------------------------------------------- dynamic bicycle
+void DynamicBicycle::initialize(const Params & params)
+{
+  noise_.position = {0.02, 0.02, 0.05};
+  noise_.orientation = {0.005, 0.005, 0.002};
+  noise_.velocity = {0.05, 0.05, 0.05};
+  noise_.angular_velocity = {0.3, 0.3, 0.05};
+  noise_.read(params);
+  input_ = params.getString("input", "");
+  if (input_.empty()) {
+    throw std::invalid_argument("motion_model.input: the wheel sensor that drives dynamic_bicycle");
+  }
+  mass_ = params.getDouble("mass", mass_);
+  yaw_inertia_ = params.getDouble("yaw_inertia", yaw_inertia_);
+  lf_ = params.getDouble("lf", lf_);
+  lr_ = params.getDouble("lr", lr_);
+  cf_ = params.getDouble("cornering_stiffness_front", cf_);
+  cr_ = params.getDouble("cornering_stiffness_rear", cr_);
+  kinematic_speed_ = params.getDouble("kinematic_speed", kinematic_speed_);
+  dynamic_speed_ = std::max(kinematic_speed_ + 0.1, params.getDouble("dynamic_speed", dynamic_speed_));
+  speed_noise_ = params.getDouble("speed_noise", speed_noise_);
+  steering_noise_ = params.getDouble("steering_noise", steering_noise_);
+  lateral_noise_ = params.getDouble("lateral_noise", lateral_noise_);
+}
+
+State DynamicBicycle::predict(const State & x, double dt, const Inputs & u) const
+{
+  const Input * wheels = u.get(input_);
+  if (wheels == nullptr) {
+    return ConstantAcceleration::predict(x, dt, u);
+  }
+  const double speed = wheels->u(0);
+  const double steering = wheels->u(1);
+  const double wheel_base = lf_ + lr_;
+  // base_footprint is in the middle of the wheel base; the centre of mass lr ahead of the
+  // rear axle, so at com_x from base_footprint
+  const double com_x = lr_ - wheel_base / 2.0;
+
+  // Kinematic: no slip, the rear axle does not move sideways
+  const double r_kinematic = speed * std::tan(steering) / wheel_base;
+  const double v_kinematic = r_kinematic * lr_;
+
+  double v = v_kinematic;
+  double r = r_kinematic;
+  const double blend = std::clamp((speed - kinematic_speed_) / (dynamic_speed_ - kinematic_speed_), 0.0, 1.0);
+  if (blend > 0.0) {
+    // Dynamic, from the state: lateral velocity at the centre of mass and yaw rate
+    const Eigen::Vector3d w_state = x.angularVelocity();
+    const double r0 = w_state.z();
+    const double v0 = x.linearVelocity().y() + r0 * com_x;
+    Eigen::Matrix2d A;
+    A << -(cf_ + cr_) / (mass_ * speed), (lr_ * cr_ - lf_ * cf_) / (mass_ * speed) - speed,
+      (lr_ * cr_ - lf_ * cf_) / (yaw_inertia_ * speed), -(lf_ * lf_ * cf_ + lr_ * lr_ * cr_) / (yaw_inertia_ * speed);
+    const Eigen::Vector2d B(cf_ / mass_, lf_ * cf_ / yaw_inertia_);
+    // Backward Euler: (I - dt A) x' = x + dt B steering
+    const Eigen::Vector2d next =
+      (Eigen::Matrix2d::Identity() - dt * A).partialPivLu().solve(Eigen::Vector2d(v0, r0) + dt * B * steering);
+    v = blend * next(0) + (1.0 - blend) * v_kinematic;
+    r = blend * next(1) + (1.0 - blend) * r_kinematic;
+  }
+
+  const Eigen::Vector3d w_state = x.angularVelocity();
+  const Eigen::Vector3d body_velocity(speed, v - r * com_x, 0.0);  // back to base_footprint
+  const Eigen::Vector3d w(w_state.x(), w_state.y(), r);
+  State y = x;
+  integrateBody(y, body_velocity, w, Eigen::Vector3d::Zero(), dt);
+  y.vector(blocks::kLinearVelocity) = body_velocity;
+  y.vector(blocks::kAngularVelocity) = w;
+  return y;
+}
+
+Eigen::MatrixXd DynamicBicycle::processNoise(const State & x, double dt, const Inputs & u) const
+{
+  Eigen::MatrixXd Q = noise_.covariance(x.layout(), dt);
+  const Input * wheels = u.get(input_);
+  if (wheels == nullptr) {
+    return Q;
+  }
+  const double speed = wheels->u(0);
+  const double steering = wheels->u(1);
+  const double wheel_base = lf_ + lr_;
+  const double c = std::cos(steering);
+  const double speed_var = speed_noise_ * speed_noise_;
+  // The steering and speed noise as for the kinematic model, plus the tyre model's own error
+  const double yaw_rate_var =
+    std::pow(std::tan(steering) / wheel_base, 2) * speed_var +
+    std::pow(speed / (wheel_base * c * c), 2) * steering_noise_ * steering_noise_;
+  const double lateral_var = lateral_noise_ * lateral_noise_ * dt;
+  const StateLayout & layout = x.layout();
+  addVariance(Q, layout, blocks::kLinearVelocity, Eigen::Vector3d(speed_var, lateral_var, speed_var * 0.1));
   addVariance(Q, layout, blocks::kAngularVelocity, Eigen::Vector3d(0.0, 0.0, yaw_rate_var));
   addVariance(Q, layout, blocks::kOrientation, Eigen::Vector3d(0.0, 0.0, yaw_rate_var * dt * dt));
   addVariance(Q, layout, blocks::kPosition, Eigen::Vector3d::Constant(speed_var * dt * dt));

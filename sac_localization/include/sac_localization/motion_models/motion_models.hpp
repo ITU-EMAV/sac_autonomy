@@ -67,4 +67,43 @@ private:
   double steering_noise_ = 0.01;
 };
 
+/// Dynamic bicycle (single-track) model: like KinematicBicycle, the wheels' speed and
+/// steering (as_input) drive it, but the tyres slip. Lateral forces are linear in the slip
+/// angles (cornering stiffness), so the car's lateral velocity and yaw rate follow the
+/// steering with a lag and it understeers or oversteers as a real car does.
+///
+///   lateral velocity v and yaw rate r at the centre of mass, speed u:
+///     m (v' + u r) = Fyf + Fyr,  Iz r' = lf Fyf - lr Fyr
+///     Fyf = Cf (steering - (v + lf r) / u),  Fyr = Cr (-(v - lr r) / u)
+///
+/// Integrated with backward Euler (stable at low speed, where the 1/u terms make forward
+/// Euler blow up; Ge et al., "Numerically Stable Dynamic Bicycle Model for Discrete-time
+/// Control", 2021) and blended into the kinematic model below `dynamic_speed` (fully
+/// kinematic under `kinematic_speed`), as racing stacks do.
+/// Parameters: input, mass, yaw_inertia, lf, lr (centre of mass to the front / rear axle),
+/// cornering_stiffness_front / _rear [N/rad per axle], kinematic_speed, dynamic_speed,
+/// speed_noise, steering_noise, lateral_noise, plus BlockNoise.
+class DynamicBicycle : public ConstantAcceleration
+{
+public:
+  void initialize(const Params & params) override;
+  std::vector<std::string> inputs() const override { return {input_}; }
+  State predict(const State & x, double dt, const Inputs & u) const override;
+  Eigen::MatrixXd processNoise(const State & x, double dt, const Inputs & u) const override;
+
+private:
+  std::string input_;
+  double mass_ = 910.0;
+  double yaw_inertia_ = 800.0;
+  double lf_ = 1.124;
+  double lr_ = 0.749;
+  double cf_ = 36000.0;
+  double cr_ = 52000.0;
+  double kinematic_speed_ = 0.5;
+  double dynamic_speed_ = 2.0;
+  double speed_noise_ = 0.1;
+  double steering_noise_ = 0.01;
+  double lateral_noise_ = 0.3;
+};
+
 }  // namespace sac_localization
