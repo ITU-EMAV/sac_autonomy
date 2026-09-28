@@ -14,6 +14,14 @@
       lr: 0.749                   # [m] centre of mass to the rear axle
       cornering_stiffness_front: 35700.0   # [N/rad] per axle
       cornering_stiffness_rear: 53600.0
+      # manual: the values above as they are; estimate: learnt while driving, starting from
+      # them (the estimate is in the status topic). If unsure, err on the stiff side: too
+      # stiff costs little, too soft makes the heading worse than without this model.
+      # estimate needs a precise heading (RTK dual-antenna GNSS): with 1 m GNSS a sideways slip
+      # and a heading error look the same, and the estimate settles ~35 % too soft whatever
+      # the tyres (DESIGN.md, "Cornering stiffness").
+      cornering_stiffness_mode: manual
+      cornering_stiffness_estimate: grip   # estimate: grip (one factor) | front_rear
       kinematic_speed: 0.5        # [m/s] below: kinematic model
       dynamic_speed: 2.0          # [m/s] above: dynamic model
       speed_noise: 0.1            # [m/s]

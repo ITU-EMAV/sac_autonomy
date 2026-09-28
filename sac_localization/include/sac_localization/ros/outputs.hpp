@@ -22,6 +22,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "sac_localization/core/fuser.hpp"
+#include "sac_localization/core/motion_model.hpp"
 #include "sac_localization/core/params.hpp"
 #include "sac_localization/ros/sensor_adapter.hpp"
 
@@ -36,6 +37,7 @@ struct OutputContext
   const std::vector<std::shared_ptr<SensorAdapter>> & adapters;
   std::string estimator;
   std::string motion_model;
+  std::vector<EstimatedParameter> parameters;  // the motion model estimates
 };
 
 class Output

@@ -88,15 +88,43 @@ private:
 ///               as_input + also_measure, use: [speed]); input: the wheel speed input as it
 ///               is. With `input`, a spinning or airborne wheel (crest landings, wheelspin,
 ///               locked brakes) drives the estimate off, as it cannot be rejected.
+///
+/// The cornering stiffness, cornering_stiffness_mode:
+///   manual (default): cornering_stiffness_front / _rear as they are
+///   estimate: learnt while driving, starting from those values. The state gets a block
+///     "cornering_stiffness" with the logarithm of the factor on them (they stay positive);
+///     the gyros, accelerometers and GNSS correct it through the yaw rate and sideways slip
+///     the model predicts in corners. The estimate is in the status output. It needs a
+///     precise heading (RTK dual-antenna GNSS): with 1 m GNSS it settles too soft (DESIGN.md).
+///       cornering_stiffness_estimate: grip (default; one factor on both axles, the road's
+///         grip: dry to wet) or front_rear (one per axle; the balance needs varied corners)
+///       cornering_stiffness_uncertainty: initial standard deviation of the log factor
+///         (0.5: about x0.6 to x1.6)
+///       cornering_stiffness_noise: its random walk per sqrt(s) (0.005)
+///       max_cornering_stiffness_factor: the factor stays within 1/value..value (5)
 class DynamicBicycle : public ConstantAcceleration
 {
 public:
+  static constexpr char kStiffnessBlock[] = "cornering_stiffness";
+
   void initialize(const Params & params) override;
+  void addStates(StateLayoutBuilder & builder) const override;
+  void initializeBelief(Belief & belief) const override;
+  std::vector<EstimatedParameter> estimatedParameters(const Belief & belief) const override;
   std::vector<std::string> inputs() const override { return {input_}; }
   State predict(const State & x, double dt, const Inputs & u) const override;
   Eigen::MatrixXd processNoise(const State & x, double dt, const Inputs & u) const override;
 
 private:
+  enum class Estimate { kNone, kGrip, kFrontRear };
+  /// The cornering stiffness [front, rear] in state x
+  Eigen::Vector2d corneringStiffness(const State & x) const;
+
+  Estimate estimate_ = Estimate::kNone;
+  bool initialized_ = false;  // the mode is read once: it shapes the state
+  double stiffness_uncertainty_ = 0.5;
+  double stiffness_noise_ = 0.005;
+  double max_stiffness_factor_ = 5.0;
   std::string input_;
   double mass_ = 910.0;
   double yaw_inertia_ = 800.0;

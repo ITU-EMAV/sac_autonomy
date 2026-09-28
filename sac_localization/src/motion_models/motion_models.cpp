@@ -251,6 +251,76 @@ void DynamicBicycle::initialize(const Params & params)
     throw std::invalid_argument("motion_model.speed_from: state or input");
   }
   speed_from_state_ = speed_from == "state";
+  if (!initialized_) {
+    const std::string mode = params.getString("cornering_stiffness_mode", "manual");
+    const std::string what = params.getString("cornering_stiffness_estimate", "grip");
+    if (mode == "manual") {
+      estimate_ = Estimate::kNone;
+    } else if (mode != "estimate") {
+      throw std::invalid_argument("motion_model.cornering_stiffness_mode: manual or estimate");
+    } else if (what == "grip") {
+      estimate_ = Estimate::kGrip;
+    } else if (what == "front_rear") {
+      estimate_ = Estimate::kFrontRear;
+    } else {
+      throw std::invalid_argument("motion_model.cornering_stiffness_estimate: grip or front_rear");
+    }
+    initialized_ = true;
+  }
+  stiffness_uncertainty_ = params.getDouble("cornering_stiffness_uncertainty", stiffness_uncertainty_);
+  stiffness_noise_ = params.getDouble("cornering_stiffness_noise", stiffness_noise_);
+  max_stiffness_factor_ = std::max(1.0, params.getDouble("max_cornering_stiffness_factor", max_stiffness_factor_));
+}
+
+void DynamicBicycle::addStates(StateLayoutBuilder & builder) const
+{
+  if (estimate_ != Estimate::kNone) {
+    builder.add(kStiffnessBlock, BlockKind::kVector, estimate_ == Estimate::kGrip ? 1 : 2);
+  }
+}
+
+void DynamicBicycle::initializeBelief(Belief & belief) const
+{
+  if (estimate_ == Estimate::kNone) {
+    return;
+  }
+  const BlockInfo & b = belief.state.layout().block(kStiffnessBlock);
+  belief.state.vector(kStiffnessBlock).setZero();  // the configured values
+  belief.covariance.block(b.tangent_offset, 0, b.tangent_size, belief.covariance.cols()).setZero();
+  belief.covariance.block(0, b.tangent_offset, belief.covariance.rows(), b.tangent_size).setZero();
+  for (int i = 0; i < b.tangent_size; ++i) {
+    belief.covariance(b.tangent_offset + i, b.tangent_offset + i) = stiffness_uncertainty_ * stiffness_uncertainty_;
+  }
+}
+
+std::vector<EstimatedParameter> DynamicBicycle::estimatedParameters(const Belief & belief) const
+{
+  if (estimate_ == Estimate::kNone) {
+    return {};
+  }
+  const Eigen::Vector2d c = corneringStiffness(belief.state);
+  const BlockInfo & b = belief.state.layout().block(kStiffnessBlock);
+  auto stddev = [&](int i) {
+    // Of C = C0 exp(s): dC = C ds
+    const int k = std::min(i, b.tangent_size - 1);
+    return c(i) * std::sqrt(std::max(0.0, belief.covariance(b.tangent_offset + k, b.tangent_offset + k)));
+  };
+  return {
+    {"cornering_stiffness_front", c(0), stddev(0)},
+    {"cornering_stiffness_rear", c(1), stddev(1)},
+  };
+}
+
+Eigen::Vector2d DynamicBicycle::corneringStiffness(const State & x) const
+{
+  if (estimate_ == Estimate::kNone) {
+    return {cf_, cr_};
+  }
+  const Eigen::VectorXd s = x.vector(kStiffnessBlock);
+  const double limit = std::log(max_stiffness_factor_);
+  const double front = std::clamp(s(0), -limit, limit);
+  const double rear = std::clamp(s(s.size() - 1), -limit, limit);
+  return {cf_ * std::exp(front), cr_ * std::exp(rear)};
 }
 
 State DynamicBicycle::predict(const State & x, double dt, const Inputs & u) const
@@ -283,10 +353,13 @@ State DynamicBicycle::predict(const State & x, double dt, const Inputs & u) cons
     const Eigen::Vector3d w_state = x.angularVelocity();
     const double r0 = w_state.z();
     const double v0 = x.linearVelocity().y() + r0 * com_x;
+    const Eigen::Vector2d c = corneringStiffness(x);
+    const double cf = c(0);
+    const double cr = c(1);
     Eigen::Matrix2d A;
-    A << -(cf_ + cr_) / (mass_ * speed), (lr_ * cr_ - lf_ * cf_) / (mass_ * speed) - speed,
-      (lr_ * cr_ - lf_ * cf_) / (yaw_inertia_ * speed), -(lf_ * lf_ * cf_ + lr_ * lr_ * cr_) / (yaw_inertia_ * speed);
-    const Eigen::Vector2d B(cf_ / mass_, lf_ * cf_ / yaw_inertia_);
+    A << -(cf + cr) / (mass_ * speed), (lr_ * cr - lf_ * cf) / (mass_ * speed) - speed,
+      (lr_ * cr - lf_ * cf) / (yaw_inertia_ * speed), -(lf_ * lf_ * cf + lr_ * lr_ * cr) / (yaw_inertia_ * speed);
+    const Eigen::Vector2d B(cf / mass_, lf_ * cf / yaw_inertia_);
     // Backward Euler: (I - dt A) x' = x + dt B steering
     const Eigen::Vector2d next =
       (Eigen::Matrix2d::Identity() - dt * A).partialPivLu().solve(Eigen::Vector2d(v0, r0) + dt * B * steering);
@@ -313,6 +386,12 @@ State DynamicBicycle::predict(const State & x, double dt, const Inputs & u) cons
 Eigen::MatrixXd DynamicBicycle::processNoise(const State & x, double dt, const Inputs & u) const
 {
   Eigen::MatrixXd Q = noise_.covariance(x.layout(), dt);
+  if (estimate_ != Estimate::kNone) {
+    const BlockInfo & b = x.layout().block(kStiffnessBlock);
+    for (int i = 0; i < b.tangent_size; ++i) {
+      Q(b.tangent_offset + i, b.tangent_offset + i) = stiffness_noise_ * stiffness_noise_ * dt;
+    }
+  }
   const Input * wheels = u.get(input_);
   if (wheels == nullptr) {
     return Q;

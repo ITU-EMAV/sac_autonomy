@@ -97,3 +97,52 @@ TEST(DynamicBicycle, NumericJacobianIsFinite)
   const Eigen::MatrixXd F = numericMotionJacobian(m, x, 0.01, wheels(8.0, 0.1));
   EXPECT_TRUE(F.allFinite());
 }
+
+TEST(DynamicBicycle, ManualStiffnessAddsNoState)
+{
+  const DynamicBicycle m = model();
+  StateLayoutBuilder b;
+  m.addStates(b);
+  EXPECT_FALSE(b.build()->has(DynamicBicycle::kStiffnessBlock));
+}
+
+TEST(DynamicBicycle, EstimatedStiffnessStartsFromTheConfiguredValues)
+{
+  for (const std::string what : {"grip", "front_rear"}) {
+    MapParams params;
+    params.strings["input"] = "wheels";
+    params.strings["speed_from"] = "input";
+    params.strings["cornering_stiffness_mode"] = "estimate";
+    params.strings["cornering_stiffness_estimate"] = what;
+    params.doubles["cornering_stiffness_front"] = 30000.0;
+    params.doubles["cornering_stiffness_rear"] = 50000.0;
+    DynamicBicycle m;
+    m.initialize(params);
+    StateLayoutBuilder b;
+    m.addStates(b);
+    const auto layout = b.build();
+    ASSERT_TRUE(layout->has(DynamicBicycle::kStiffnessBlock));
+    EXPECT_EQ(layout->block(DynamicBicycle::kStiffnessBlock).tangent_size, what == "grip" ? 1 : 2);
+    Belief belief{0, State(layout), Eigen::MatrixXd::Identity(layout->tangentSize(), layout->tangentSize())};
+    m.initializeBelief(belief);
+    const auto p = m.estimatedParameters(belief);
+    ASSERT_EQ(p.size(), 2u);
+    EXPECT_DOUBLE_EQ(p[0].value, 30000.0);
+    EXPECT_DOUBLE_EQ(p[1].value, 50000.0);
+    EXPECT_NEAR(p[0].stddev, 30000.0 * 0.5, 1e-6);  // the default uncertainty
+
+    // A factor of 2 in the state predicts as twice the configured stiffness does
+    State x = belief.state;
+    x.vector(blocks::kLinearVelocity) = Eigen::Vector3d(10.0, 0.1, 0.0);
+    x.vector(blocks::kAngularVelocity) = Eigen::Vector3d(0.0, 0.0, 0.2);
+    x.vector(DynamicBicycle::kStiffnessBlock).setConstant(std::log(2.0));
+    MapParams doubled = params;
+    doubled.strings["cornering_stiffness_mode"] = "manual";
+    doubled.doubles["cornering_stiffness_front"] = 60000.0;
+    doubled.doubles["cornering_stiffness_rear"] = 100000.0;
+    DynamicBicycle reference;
+    reference.initialize(doubled);
+    const Inputs u = wheels(10.0, 0.05);
+    EXPECT_TRUE(m.predict(x, 0.01, u).boxminus(reference.predict(x, 0.01, u)).isZero(1e-9)) << what;
+  }
+}

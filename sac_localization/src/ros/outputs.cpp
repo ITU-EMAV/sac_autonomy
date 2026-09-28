@@ -254,6 +254,11 @@ public:
       m.position_stddev.push_back(std::sqrt(std::max(0.0, out.belief.covariance(p + i, p + i))));
     }
     m.yaw_stddev = yawStddev(out.belief);
+    for (const EstimatedParameter & parameter : out.parameters) {
+      m.parameter_names.push_back(parameter.name);
+      m.parameter_values.push_back(parameter.value);
+      m.parameter_stddevs.push_back(parameter.stddev);
+    }
     for (const auto & adapter : out.adapters) {
       const SensorStatistics & s = adapter->statistics();
       sac_localization_msgs::msg::SensorStatus status;

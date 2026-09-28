@@ -332,6 +332,42 @@ constant_acceleration stays the default as it needs no car parameters; dynamic_b
 (`motion_model:=dynamic_bicycle`) needs the car's mass, yaw inertia, axle distances and
 cornering stiffness (config/models/dynamic_bicycle.yaml), to be measured on the real car.
 
+### Cornering stiffness: manual or estimated
+`cornering_stiffness_mode: manual` (default) uses the configured values; `estimate` adds the
+logarithm of a factor on them to the state (`cornering_stiffness_estimate: grip`, one for
+both axles, or `front_rear`) and publishes the estimate in the status topic.
+
+Reference: the tyre forces from Gazebo's true motion (Newton, with the steering joints)
+against the slip angles give, in every 100 s window of the recordings, front / rear
+33 800-34 000 / 52 700-53 300 N/rad on the dry preset and 22 800 / 34 800 on the wet one
+(the WheelSlip parameters give 35 700 / 53 500 and 23 800 / 35 700); the tyres are linear.
+
+Sensitivity, replaying the wet lap with fixed values:
+
+| Configured stiffness | Position p95 | Yaw p95 |
+|---|---|---|
+| true | 0.53 m | 0.92 deg |
+| x1.55 | 0.51 m | 0.95 deg |
+| x3 | 0.52 m | 1.22 deg |
+| x0.5 | 0.59 m | 2.24 deg |
+
+Too stiff costs little, too soft a lot: when unsure, err on the stiff side.
+
+The estimate does **not** find the tyres with the simulated sensors (GNSS 1 m): on the wet
+lap it settled at 19 900 / 29 800 (EKF and UKF alike), on the dry one at 22 400-22 600 /
+34 000, whether it started from the wet values, the dry ones or half of them. With it the
+filter's lateral velocity is 47 mm/s per m/s^2 of lateral acceleration off the truth and its
+heading 0.14 deg per m/s^2 (with the true values: -0.4 mm/s and 0.007 deg), and the dry lap's
+yaw p95 is 1.12 deg instead of 0.88 (constant_acceleration 1.24). A sideways slip and a
+heading error move the GNSS antennas alike; only a precise heading (RTK dual-antenna GNSS)
+tells them apart, and the parameter drifts along the direction the sensors cannot see.
+Two other ways failed too: the regression delta - L r / u = Fyf / Cf - Fyr / Cr from the IMU
+and the steering (Lundquist & Schön 2009; no sideslip needed) cannot see the grip of a
+neutral-steering car (lr / Cf = lf / Cr, as with load-proportional tyres) except in
+transients, where 10 ms of steering delay changes the result 2-6x.
+So: `manual` with measured (or stiff-side) values; `estimate` only with a precise heading,
+and check its value against a measurement.
+
 ## Implementation order (see Status for what is done)
 
 1. Core: `State`, geodesy (checked against sac_planning), measurement models with numeric

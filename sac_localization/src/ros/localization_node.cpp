@@ -187,6 +187,7 @@ Belief LocalizationNode::beliefAt(
     }
     set(block.tangent_offset, block.tangent_size, variance);
   }
+  motion_model_->initializeBelief(b);
   return b;
 }
 
@@ -325,7 +326,9 @@ void LocalizationNode::tick()
     }
   }
   recoverIfLost();
-  const OutputContext context{fuser_->belief(), results, adapters_, estimator_type_, motion_model_type_};
+  const OutputContext context{
+    fuser_->belief(), results, adapters_, estimator_type_, motion_model_type_,
+    motion_model_->estimatedParameters(fuser_->belief())};
   for (const auto & output : outputs_) {
     output->publish(context);
   }

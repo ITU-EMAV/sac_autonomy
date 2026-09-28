@@ -21,6 +21,14 @@
 namespace sac_localization
 {
 
+/// A model parameter the filter estimates (a block the model added), for the status output.
+struct EstimatedParameter
+{
+  std::string name;
+  double value;
+  double stddev;
+};
+
 class MotionModel
 {
 public:
@@ -31,6 +39,17 @@ public:
 
   /// Blocks the model needs besides the core ones.
   virtual void addStates(StateLayoutBuilder & builder) const { (void)builder; }
+
+  /// Initial values and variances of the blocks it added (otherwise zero, with the node's
+  /// initial_covariance.other).
+  virtual void initializeBelief(Belief & belief) const { (void)belief; }
+
+  /// The parameters it estimates, in their own units (for the status output).
+  virtual std::vector<EstimatedParameter> estimatedParameters(const Belief & belief) const
+  {
+    (void)belief;
+    return {};
+  }
 
   /// Sources of the inputs it reads (e.g. {"middle_imu"}); empty for models without inputs.
   virtual std::vector<std::string> inputs() const { return {}; }

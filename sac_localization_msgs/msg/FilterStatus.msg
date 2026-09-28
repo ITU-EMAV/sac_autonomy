@@ -7,3 +7,7 @@ bool initialized
 float64[] position_stddev     # [m] x, y, z
 float64 yaw_stddev            # [rad]
 SensorStatus[] sensors
+# Model parameters the filter estimates (e.g. the cornering stiffness), in their own units
+string[] parameter_names
+float64[] parameter_values
+float64[] parameter_stddevs
