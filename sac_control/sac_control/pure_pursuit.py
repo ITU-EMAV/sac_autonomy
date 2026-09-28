@@ -8,8 +8,8 @@ Speed: the path's curvature limits the speed (lateral acceleration), braking sta
 enough to reach each corner's speed (and a stop at the end of an open path), and the
 command changes no faster than the acceleration limits.
 
-Safety: when the car is further than `max_off_path` from the path it stops, and stays
-stopped until a path is published again.
+Safety: when the car stays further than `max_off_path` from the path for `off_path_time` it
+stops, and stays stopped until a path is published again.
 
 Subscribes:  path     nav_msgs/Path in the map frame (remapped to /sac/planning/path); a loop
                       (last pose next to the first) is driven round and round
@@ -48,8 +48,11 @@ class PurePursuit(Node):
         self.lookahead_min = p("lookahead_min", 4.0).value
         self.lookahead_gain = p("lookahead_gain", 0.6).value  # [s]
         self.lookahead_max = p("lookahead_max", 20.0).value
-        # Stop when the car is further than this from the path [m]
+        # Stop when the car stays further than this from the path [m] for off_path_time [s]
+        # (one bad pose, e.g. a TF glitch, does not stop it)
         self.max_off_path = p("max_off_path", 4.0).value
+        self.off_path_time = p("off_path_time", 0.5).value
+        self.off_path_since = None
         self.map_frame = p("map_frame", "map").value
         self.robot_frame = p("robot_frame", "base_footprint").value
         rate = p("rate", 20.0).value  # [Hz]
@@ -75,7 +78,7 @@ class PurePursuit(Node):
     def on_parameters(self, parameters):
         tunable = {
             "max_speed", "max_lateral_acceleration", "max_acceleration", "max_deceleration",
-            "lookahead_min", "lookahead_gain", "lookahead_max", "max_off_path",
+            "lookahead_min", "lookahead_gain", "lookahead_max", "max_off_path", "off_path_time",
         }
         for parameter in parameters:
             if parameter.name in tunable:
@@ -152,7 +155,12 @@ class PurePursuit(Node):
 
         i = self.nearest(rear)
         off_path = float(np.hypot(*(self.path[i] - rear)))
-        if off_path > self.max_off_path:
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if off_path <= self.max_off_path:
+            self.off_path_since = None
+        elif self.off_path_since is None:
+            self.off_path_since = now
+        if self.off_path_since is not None and now - self.off_path_since >= self.off_path_time:
             self.finished = True
             self.stop()
             self.get_logger().error(

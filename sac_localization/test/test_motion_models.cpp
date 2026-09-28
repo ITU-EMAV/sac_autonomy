@@ -22,10 +22,11 @@ Inputs wheels(double speed, double steering)
   return inputs;
 }
 
-DynamicBicycle model()
+DynamicBicycle model(const std::string & speed_from = "input")
 {
   MapParams params;
   params.strings["input"] = "wheels";
+  params.strings["speed_from"] = speed_from;
   DynamicBicycle m;
   m.initialize(params);
   return m;
@@ -71,6 +72,22 @@ TEST(DynamicBicycle, SlipsInCorners)
   const double rear_lateral = x.linearVelocity().y() - r * (1.124 + 0.749) / 2.0;  // half a wheel base behind
   EXPECT_LT(rear_lateral, -0.05);
   EXPECT_GT(rear_lateral, -1.0);
+}
+
+TEST(DynamicBicycle, SpeedFromTheStateIgnoresTheWheelSpeed)
+{
+  // An airborne wheel spins at 10 m/s while the car goes 8 m/s: with speed_from state the
+  // prediction keeps the state's speed (the wheel speed is a measurement then)
+  const DynamicBicycle m = model("state");
+  StateLayoutBuilder b;
+  State x(b.build());
+  x.vector(blocks::kLinearVelocity) = Eigen::Vector3d(8.0, 0.0, 0.0);
+  const Inputs u = wheels(10.0, 0.0);
+  for (int i = 0; i < 100; ++i) {
+    x = m.predict(x, 0.01, u);
+  }
+  EXPECT_NEAR(x.linearVelocity().x(), 8.0, 1e-9);
+  EXPECT_NEAR(x.position().x(), 8.0, 1e-6);
 }
 
 TEST(DynamicBicycle, NumericJacobianIsFinite)

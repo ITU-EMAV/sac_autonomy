@@ -246,6 +246,11 @@ void DynamicBicycle::initialize(const Params & params)
   speed_noise_ = params.getDouble("speed_noise", speed_noise_);
   steering_noise_ = params.getDouble("steering_noise", steering_noise_);
   lateral_noise_ = params.getDouble("lateral_noise", lateral_noise_);
+  const std::string speed_from = params.getString("speed_from", "state");
+  if (speed_from != "state" && speed_from != "input") {
+    throw std::invalid_argument("motion_model.speed_from: state or input");
+  }
+  speed_from_state_ = speed_from == "state";
 }
 
 State DynamicBicycle::predict(const State & x, double dt, const Inputs & u) const
@@ -254,8 +259,13 @@ State DynamicBicycle::predict(const State & x, double dt, const Inputs & u) cons
   if (wheels == nullptr) {
     return ConstantAcceleration::predict(x, dt, u);
   }
-  const double speed = wheels->u(0);
   const double steering = wheels->u(1);
+  // The speed: the state's, moved on with its longitudinal acceleration (the wheel speed is
+  // then a measurement, which the filter can reject while a wheel slips or is in the air),
+  // or the wheel speed input as it is
+  const double speed = speed_from_state_
+                         ? x.linearVelocity().x() + x.linearAcceleration().x() * dt
+                         : wheels->u(0);
   const double wheel_base = lf_ + lr_;
   // base_footprint is in the middle of the wheel base; the centre of mass lr ahead of the
   // rear axle, so at com_x from base_footprint
@@ -289,8 +299,14 @@ State DynamicBicycle::predict(const State & x, double dt, const Inputs & u) cons
   const Eigen::Vector3d w(w_state.x(), w_state.y(), r);
   State y = x;
   integrateBody(y, body_velocity, w, Eigen::Vector3d::Zero(), dt);
+  // The lateral acceleration the model implies (v' + w x v), so the accelerometers see a
+  // turning car rather than a tilted one
+  const Eigen::Vector3d old_velocity = x.linearVelocity();
+  Eigen::Vector3d acceleration = x.linearAcceleration();
+  acceleration.y() = (body_velocity.y() - old_velocity.y()) / std::max(dt, 1e-6) + w.cross(body_velocity).y();
   y.vector(blocks::kLinearVelocity) = body_velocity;
   y.vector(blocks::kAngularVelocity) = w;
+  y.vector(blocks::kLinearAcceleration) = acceleration;
   return y;
 }
 
@@ -312,7 +328,9 @@ Eigen::MatrixXd DynamicBicycle::processNoise(const State & x, double dt, const I
     std::pow(speed / (wheel_base * c * c), 2) * steering_noise_ * steering_noise_;
   const double lateral_var = lateral_noise_ * lateral_noise_ * dt;
   const StateLayout & layout = x.layout();
-  addVariance(Q, layout, blocks::kLinearVelocity, Eigen::Vector3d(speed_var, lateral_var, speed_var * 0.1));
+  // With the speed from the state its noise is BlockNoise's (velocity and acceleration)
+  const double input_speed_var = speed_from_state_ ? 0.0 : speed_var;
+  addVariance(Q, layout, blocks::kLinearVelocity, Eigen::Vector3d(input_speed_var, lateral_var, speed_var * 0.1));
   addVariance(Q, layout, blocks::kAngularVelocity, Eigen::Vector3d(0.0, 0.0, yaw_rate_var));
   addVariance(Q, layout, blocks::kOrientation, Eigen::Vector3d(0.0, 0.0, yaw_rate_var * dt * dt));
   addVariance(Q, layout, blocks::kPosition, Eigen::Vector3d::Constant(speed_var * dt * dt));

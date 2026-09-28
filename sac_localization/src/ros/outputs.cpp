@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <deque>
+#include <optional>
 #include <utility>
 
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -65,8 +66,24 @@ double yawStddev(const Belief & b)
 class TfOutput : public Output
 {
 public:
-  TfOutput(rclcpp::Node & node, const AdapterContext & context, std::string odom_frame)
-  : node_(node), context_(context), odom_frame_(std::move(odom_frame)), broadcaster_(node) {}
+  /// `local_odometry`: the local filter's odometry topic (global filter only). map -> odom must
+  /// be computed with the local filter's odom -> base at exactly the belief's stamp, or the
+  /// chain map -> odom -> base that consumers read is off by the car's motion in between
+  /// (metres at speed when the local estimate changes quickly). Its messages are buffered and
+  /// interpolated, or extrapolated a little with their twist when the stamp is newer.
+  TfOutput(rclcpp::Node & node, const AdapterContext & context, std::string odom_frame, const std::string & local_odometry)
+  : node_(node), context_(context), odom_frame_(std::move(odom_frame)), broadcaster_(node)
+  {
+    if (context_.world_frame != odom_frame_ && !local_odometry.empty()) {
+      local_ = node.create_subscription<nav_msgs::msg::Odometry>(
+        local_odometry, 50, [this](nav_msgs::msg::Odometry::ConstSharedPtr m) {
+          local_poses_.push_back(*m);
+          while (local_poses_.size() > 200) {
+            local_poses_.pop_front();
+          }
+        });
+    }
+  }
 
   void publish(const OutputContext & out) override
   {
@@ -79,32 +96,72 @@ public:
       t.transform = tf2::eigenToTransform(world_base).transform;
     } else {
       // map -> odom = (map -> base) (odom -> base)^-1, with the local filter's odom -> base
-      Eigen::Isometry3d odom_base;
-      try {
-        odom_base = tf2::transformToEigen(context_.tf->lookupTransform(
-          odom_frame_, context_.base_frame, tf2_ros::fromMsg(t.header.stamp), tf2::durationFromSec(0.0)));
-      } catch (const tf2::TransformException &) {
-        try {
-          odom_base = tf2::transformToEigen(
-            context_.tf->lookupTransform(odom_frame_, context_.base_frame, tf2::TimePointZero));
-        } catch (const tf2::TransformException & error) {
-          RCLCPP_WARN_THROTTLE(
-            node_.get_logger(), *node_.get_clock(), 5000, "No %s -> %s (is the local filter running?): %s",
-            odom_frame_.c_str(), context_.base_frame.c_str(), error.what());
-          return;
-        }
+      const auto odom_base = localAt(out.belief.stamp);
+      if (!odom_base) {
+        RCLCPP_WARN_THROTTLE(
+          node_.get_logger(), *node_.get_clock(), 5000, "No %s -> %s yet (is the local filter running?)",
+          odom_frame_.c_str(), context_.base_frame.c_str());
+        return;
       }
       t.child_frame_id = odom_frame_;
-      t.transform = tf2::eigenToTransform(world_base * odom_base.inverse()).transform;
+      t.transform = tf2::eigenToTransform(world_base * odom_base->inverse()).transform;
     }
     broadcaster_.sendTransform(t);
   }
 
 private:
+  static Stamp stampOf(const nav_msgs::msg::Odometry & m)
+  {
+    return static_cast<Stamp>(m.header.stamp.sec) * 1000000000LL + m.header.stamp.nanosec;
+  }
+
+  /// The local filter's odom -> base at `stamp`.
+  std::optional<Eigen::Isometry3d> localAt(Stamp stamp)
+  {
+    if (local_poses_.empty()) {
+      // No odometry topic: TF at the stamp only (never the latest, which would be off)
+      try {
+        return tf2::transformToEigen(context_.tf->lookupTransform(
+          odom_frame_, context_.base_frame, tf2_ros::fromMsg(toMsg(stamp)), tf2::durationFromSec(0.0)));
+      } catch (const tf2::TransformException &) {
+        return std::nullopt;
+      }
+    }
+    for (std::size_t i = local_poses_.size(); i-- > 1;) {
+      const Stamp t0 = stampOf(local_poses_[i - 1]);
+      const Stamp t1 = stampOf(local_poses_[i]);
+      if (t0 <= stamp && stamp <= t1 && t1 > t0) {
+        Eigen::Isometry3d a, b;
+        tf2::fromMsg(local_poses_[i - 1].pose.pose, a);
+        tf2::fromMsg(local_poses_[i].pose.pose, b);
+        const double s = static_cast<double>(stamp - t0) / static_cast<double>(t1 - t0);
+        Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
+        pose.translation() = (1.0 - s) * a.translation() + s * b.translation();
+        pose.linear() = Eigen::Quaterniond(a.linear()).slerp(s, Eigen::Quaterniond(b.linear())).toRotationMatrix();
+        return pose;
+      }
+    }
+    const nav_msgs::msg::Odometry & last = local_poses_.back();
+    const double dt = toSeconds(stamp - stampOf(last));
+    if (dt < 0.0 || dt > 0.2) {
+      return std::nullopt;  // older than the buffer, or the local filter stopped
+    }
+    // Newer than the last local estimate: move it on with its twist (body frame)
+    Eigen::Isometry3d pose;
+    tf2::fromMsg(last.pose.pose, pose);
+    const auto & v = last.twist.twist.linear;
+    const auto & w = last.twist.twist.angular;
+    pose.translation() += pose.linear() * Eigen::Vector3d(v.x, v.y, v.z) * dt;
+    pose.linear() = pose.linear() * expSO3(Eigen::Vector3d(w.x, w.y, w.z) * dt).toRotationMatrix();
+    return pose;
+  }
+
   rclcpp::Node & node_;
   AdapterContext context_;
   std::string odom_frame_;
   tf2_ros::TransformBroadcaster broadcaster_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr local_;
+  std::deque<nav_msgs::msg::Odometry> local_poses_;
 };
 
 // ---------------------------------------------------------------- odometry
@@ -315,7 +372,8 @@ std::vector<std::unique_ptr<Output>> makeOutputs(
 {
   std::vector<std::unique_ptr<Output>> outputs;
   if (params.getBool("outputs.tf", true)) {
-    outputs.push_back(std::make_unique<TfOutput>(node, context, params.getString("odom_frame", "odom")));
+    outputs.push_back(std::make_unique<TfOutput>(
+      node, context, params.getString("odom_frame", "odom"), params.getString("outputs.local_odometry", "")));
   }
   const std::string odometry = params.getString("outputs.odometry", "");
   if (!odometry.empty()) {

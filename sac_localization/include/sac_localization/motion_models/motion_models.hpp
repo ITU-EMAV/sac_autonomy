@@ -83,6 +83,11 @@ private:
 /// Parameters: input, mass, yaw_inertia, lf, lr (centre of mass to the front / rear axle),
 /// cornering_stiffness_front / _rear [N/rad per axle], kinematic_speed, dynamic_speed,
 /// speed_noise, steering_noise, lateral_noise, plus BlockNoise.
+///   speed_from: state (default) the speed is the state's, with constant longitudinal
+///               acceleration, and the wheel speed a measurement (wheel adapter
+///               as_input + also_measure, use: [speed]); input: the wheel speed input as it
+///               is. With `input`, a spinning or airborne wheel (crest landings, wheelspin,
+///               locked brakes) drives the estimate off, as it cannot be rejected.
 class DynamicBicycle : public ConstantAcceleration
 {
 public:
@@ -104,6 +109,7 @@ private:
   double speed_noise_ = 0.1;
   double steering_noise_ = 0.01;
   double lateral_noise_ = 0.3;
+  bool speed_from_state_ = true;
 };
 
 }  // namespace sac_localization

@@ -297,13 +297,40 @@ replayed through the motion models (GNSS 1 m):
 | dynamic_bicycle (dry tyre values) | 0.24 / 0.51 m | 0.38 / 0.95 deg |
 | dynamic_bicycle (wet tyre values) | 0.25 / 0.52 m | 0.37 / 0.93 deg |
 
-Modelling the slip cuts the yaw error by 40 %, even with the wrong tyre values. But driving
-on it (closed loop, dry, 10 m/s) was less robust than constant_acceleration: the car went
-3.6 m off the path over the crest after the first hairpin and left the track in the
-north-west hairpin. Likely cause: the wheel speed is the model's input, and when the wheels
-slip lengthwise (landing, hard braking) it is not the car's speed. So constant_acceleration
-stays the default; next step for dynamic_bicycle: take only the steering as input and fuse
-the wheel speed as a measurement.
+Modelling the slip cuts the yaw error by 40 %, even with the wrong tyre values.
+
+Driving on the first version failed (the car was stopped over the crest after the first
+hairpin, or left the track). A recorded failing run showed three problems, none in the tyre
+model itself:
+1. **The TF chain.** The global filter computed map -> odom with the local filter's latest
+   odom -> base when the one at its own stamp was not there yet; the chain the controller
+   reads was then off by the car's motion in between, up to 1.4 m (5.4 m live) while the
+   estimate itself was 0.14 m off. The controller's 4 m safety stop fired. Fix: the global
+   filter buffers the local filter's odometry (`outputs.local_odometry`) and interpolates it,
+   or extrapolates it a few ms with its twist, to its own stamp; the controller now stops only
+   if the car stays off the path for 0.5 s.
+2. **The wheel speed as the model's input.** Braking (after that stop) locked the rear wheels:
+   they read 4 m/s while the car still slid at 7 m/s, and an input cannot be rejected, so the
+   estimate stopped 3.5 m before the car. Fix: `speed_from: state`; the speed is a state and
+   the wheel speed a measurement (`as_input` for the steering, `also_measure`).
+3. **Wheel data during slip.** Even as a measurement, a locking wheel pulls the estimate
+   along step by step (each step a small innovation), and the standstill detector fired on
+   the locked wheels. Fix: the wheel adapter skips its data while the wheels' acceleration
+   differs from the IMU's (`slip_check_imu`), and standstill needs a still IMU too
+   (`imu_topic`). Those checks are in the configs for every motion model.
+
+On the failing recording: error through the braking slide 0.52 m instead of 3.7 m; the whole
+run 0.13 m mean, 0.61 m max instead of 0.22 / 3.8 m. Driving on it, a full lap at 10 m/s
+(dry, GNSS 1 m):
+
+| Motion model | Position mean / p95 / max | Yaw p95 | Distance from the path p95 / max |
+|---|---|---|---|
+| dynamic_bicycle | 0.21 / 0.42 / 0.69 m | 0.8 deg | 0.47 / 1.19 m |
+| constant_acceleration | 0.21 / 0.40 / 0.84 m | 1.4 deg | 0.41 / 1.02 m |
+
+constant_acceleration stays the default as it needs no car parameters; dynamic_bicycle
+(`motion_model:=dynamic_bicycle`) needs the car's mass, yaw inertia, axle distances and
+cornering stiffness (config/models/dynamic_bicycle.yaml), to be measured on the real car.
 
 ## Implementation order (see Status for what is done)
 

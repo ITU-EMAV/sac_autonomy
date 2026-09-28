@@ -105,6 +105,18 @@ double meanOf(const sensor_msgs::msg::JointState & m, const std::vector<std::str
 }
 }  // namespace
 
+// ---------------------------------------------------------------- IMU watch
+void ImuWatch::subscribe(rclcpp::Node * node, const std::string & topic)
+{
+  subscription_ = node->create_subscription<sensor_msgs::msg::Imu>(
+    topic, rclcpp::SensorDataQoS(), [this](sensor_msgs::msg::Imu::ConstSharedPtr m) {
+      has_ = true;
+      stamp_ = static_cast<Stamp>(m->header.stamp.sec) * 1000000000LL + m->header.stamp.nanosec;
+      acceleration_ = vector3(m->linear_acceleration);
+      angular_velocity_ = vector3(m->angular_velocity);
+    });
+}
+
 // ---------------------------------------------------------------- imu
 void ImuAdapter::configure(const Params & params)
 {
@@ -238,6 +250,28 @@ void WheelAdapter::configure(const Params & params)
   wheel_base_ = params.getDouble("wheel_base", wheel_base_);
   const auto rear = params.getDoubles("rear_axle", {-wheel_base_ / 2.0, 0.0, 0.0});
   rear_axle_ = Eigen::Vector3d(rear.at(0), rear.at(1), rear.at(2));
+  const std::string imu = params.getString("slip_check_imu", "");
+  if (!imu.empty()) {
+    imu_.subscribe(context().node, imu);
+  }
+}
+
+bool WheelAdapter::slipping(Stamp t, double speed)
+{
+  if (last_stamp_ != 0 && t > last_stamp_) {
+    const double a = (speed - last_speed_) / toSeconds(t - last_stamp_);
+    wheel_acceleration_ = 0.7 * wheel_acceleration_ + 0.3 * a;  // smoothed over a few readings
+  }
+  last_stamp_ = t;
+  last_speed_ = speed;
+  if (!imu_.fresh(t)) {
+    return false;
+  }
+  // The wheels speed up or slow down faster than the car: they spin or lock (hold 0.3 s)
+  if (std::abs(wheel_acceleration_ - imu_.acceleration().x()) > params().getDouble("max_slip_acceleration", 2.5)) {
+    slip_until_ = t + fromSeconds(0.3);
+  }
+  return t < slip_until_;
 }
 
 void WheelAdapter::convert(const sensor_msgs::msg::JointState & m)
@@ -250,13 +284,21 @@ void WheelAdapter::convert(const sensor_msgs::msg::JointState & m)
     return;  // another JointState on the same topic
   }
   const Stamp t = stamp(m.header.stamp);
+  const bool slip = imu_.active() && slipping(t, speed);
   if (asInput()) {
     Input input;
     input.stamp = t;
     input.u = Eigen::Vector2d(speed, steering);
     input.covariance = Eigen::MatrixXd::Zero(2, 2);
     send(std::move(input));
-    return;
+    // Also as measurements (e.g. the speed, for a model that only takes the steering as
+    // input: a slipping or airborne wheel's speed can then be rejected)
+    if (!params().getBool("also_measure", false)) {
+      return;
+    }
+  }
+  if (slip) {
+    return;  // the wheels do not tell the car's speed now
   }
   const std::vector<double> variances = params().getDoubles("covariance", {0.01, 0.001});
   Eigen::Isometry3d rear = Eigen::Isometry3d::Identity();
@@ -284,6 +326,10 @@ void ZeroVelocityAdapter::configure(const Params & params)
 {
   speed_joints_ = params.getStrings("speed_joints", {"rear_left_wheel_joint", "rear_right_wheel_joint"});
   wheel_radius_ = params.getDouble("wheel_radius", wheel_radius_);
+  const std::string imu = params.getString("imu_topic", "");
+  if (!imu.empty()) {
+    imu_.subscribe(context().node, imu);
+  }
 }
 
 void ZeroVelocityAdapter::convert(const sensor_msgs::msg::JointState & m)
@@ -292,6 +338,15 @@ void ZeroVelocityAdapter::convert(const sensor_msgs::msg::JointState & m)
   const double speed = meanOf(m, speed_joints_, true, found) * wheel_radius_;
   if (!found || std::abs(speed) > params().getDouble("threshold", 0.02)) {
     return;
+  }
+  if (imu_.active()) {
+    // Standing still only if the IMU agrees: locked wheels of a sliding car read 0 too
+    if (!imu_.fresh(stamp(m.header.stamp)) ||
+        std::abs(imu_.acceleration().norm() - 9.80665) > params().getDouble("max_acceleration_deviation", 0.3) ||
+        imu_.angularVelocity().norm() > params().getDouble("max_angular_velocity", 0.05))
+    {
+      return;
+    }
   }
   const std::vector<double> variances = params().getDoubles("covariance", {1e-4, 1e-6});
   Parts parts;

@@ -57,11 +57,35 @@ private:
   int min_status_ = 0;
 };
 
+/// The latest reading of an IMU, to cross-check wheel data against (optional).
+class ImuWatch
+{
+public:
+  void subscribe(rclcpp::Node * node, const std::string & topic);
+  bool active() const { return subscription_ != nullptr; }
+  /// A reading no older than `max_age` [s] before `now`
+  bool fresh(Stamp now, double max_age = 0.2) const { return has_ && toSeconds(now - stamp_) <= max_age; }
+  const Eigen::Vector3d & acceleration() const { return acceleration_; }  // specific force, sensor frame
+  const Eigen::Vector3d & angularVelocity() const { return angular_velocity_; }
+
+private:
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr subscription_;
+  bool has_ = false;
+  Stamp stamp_ = 0;
+  Eigen::Vector3d acceleration_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d angular_velocity_ = Eigen::Vector3d::Zero();
+};
+
 /// sensor_msgs/JointState from the wheels: the rear axle's forward speed (mean of
 /// speed_joints x wheel_radius) and the yaw rate (speed tan(mean of steering_joints) /
 /// wheel_base). use: speed, yaw_rate (default both).
 ///   covariance: [speed, yaw rate] variances; rear_axle: [x, y, z] in base_footprint
-///   as_input: [speed, steering angle] drive the kinematic_bicycle motion model
+///   as_input: [speed, steering angle] drive the kinematic_bicycle / dynamic_bicycle models
+///   also_measure: with as_input, still send the `use` quantities as measurements too
+///   slip_check_imu: an IMU topic (x forward); while the wheels' acceleration differs from
+///     the IMU's by more than max_slip_acceleration [m/s^2] (locked or spinning wheels) the
+///     wheel speed and yaw rate are not sent. The filter cannot reject those itself: the
+///     wheel speed drifts away from the car's step by step, each step a small innovation.
 class WheelAdapter : public TopicAdapter<sensor_msgs::msg::JointState>
 {
 protected:
@@ -70,16 +94,26 @@ protected:
   void convert(const sensor_msgs::msg::JointState & message) override;
 
 private:
+  bool slipping(Stamp t, double speed);
+
   std::vector<std::string> speed_joints_;
   std::vector<std::string> steering_joints_;
   double wheel_radius_ = 0.30;
   double wheel_base_ = 1.873;
   Eigen::Vector3d rear_axle_;
+  ImuWatch imu_;
+  Stamp last_stamp_ = 0;
+  double last_speed_ = 0.0;
+  double wheel_acceleration_ = 0.0;  // smoothed
+  Stamp slip_until_ = 0;
 };
 
 /// From a wheel JointState topic: when the speed is below `threshold` the car stands still:
 /// body velocity and angular velocity are 0 (this also calibrates gyro biases).
 ///   speed_joints, wheel_radius, threshold [m/s], covariance: [velocity, angular velocity]
+///   imu_topic: also require the IMU to be still (|specific force| within
+///     max_acceleration_deviation of g, |angular velocity| below max_angular_velocity):
+///     locked wheels of a sliding car read 0 too
 class ZeroVelocityAdapter : public TopicAdapter<sensor_msgs::msg::JointState>
 {
 protected:
@@ -89,6 +123,7 @@ protected:
 private:
   std::vector<std::string> speed_joints_;
   double wheel_radius_ = 0.30;
+  ImuWatch imu_;
 };
 
 /// No topic: a car does not slide sideways or jump. The lateral and vertical velocity of the

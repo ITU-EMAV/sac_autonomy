@@ -12,5 +12,6 @@ pure_pursuit:
     lookahead_min: 4.0
     lookahead_gain: 0.6
     lookahead_max: 20.0
-    # Stop when further than this from the path [m]
+    # Stop when further than this from the path [m] for off_path_time [s]
     max_off_path: 4.0
+    off_path_time: 0.5

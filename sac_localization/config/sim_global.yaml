@@ -68,12 +68,15 @@ localization_global:
       wheels:
         type: wheel
         topic: /joint_states
+        # Locked or spinning wheels (their acceleration differs from the IMU's) are skipped
+        slip_check_imu: /sac/sensors/middle_imu/imu
         wheel_radius: 0.30
         wheel_base: 1.873
         covariance: [0.01, 0.001]
       standstill:
         type: zero_velocity
         topic: /joint_states
+        imu_topic: /sac/sensors/middle_imu/imu   # standing only if the IMU is still too
         wheel_radius: 0.30
         threshold: 0.02
       nonholonomic:
@@ -96,6 +99,8 @@ localization_global:
 
     outputs:
       tf: true
+      # map -> odom from the local filter's estimate at the same instant
+      local_odometry: /sac/localization/odometry_local
       odometry: /sac/localization/odometry
       fix: /sac/localization/fix
       status: /sac/localization/status
