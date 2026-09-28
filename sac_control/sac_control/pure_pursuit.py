@@ -69,6 +69,19 @@ class PurePursuit(Node):
         self.finished = False
         self.dt = 1.0 / rate
         self.create_timer(self.dt, self.tick)
+        # Limits and lookahead can be changed while driving (ros2 param set)
+        self.add_post_set_parameters_callback(self.on_parameters)
+
+    def on_parameters(self, parameters):
+        tunable = {
+            "max_speed", "max_lateral_acceleration", "max_acceleration", "max_deceleration",
+            "lookahead_min", "lookahead_gain", "lookahead_max", "max_off_path",
+        }
+        for parameter in parameters:
+            if parameter.name in tunable:
+                setattr(self, parameter.name, float(parameter.value))
+        if self.path is not None:
+            self.speed_limit = self.speed_profile(self.path, self.spacing, self.closed)
 
     # ---------------------------------------------------------------- path
     def on_path(self, msg):

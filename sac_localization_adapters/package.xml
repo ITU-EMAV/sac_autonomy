@@ -18,6 +18,7 @@
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2_eigen</depend>
+  <depend>rclcpp</depend>
   <!-- Optional: adapters for these are built only when the packages are installed -->
   <!-- geographic_msgs, gps_msgs, ublox_msgs -->
 

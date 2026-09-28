@@ -17,7 +17,7 @@ Both workspaces include this repository as a git submodule under `src/`.
 | `sac_planning` | the path to follow. Method so far: `route_planner`, a route given on the world map (latitude/longitude waypoints, see [Routes](#routes)). |
 | `sac_control` | follows the path: `pure_pursuit` (steering) with a speed profile from the path's curvature |
 | `sac_bringup` | `autonomy.launch.py`: planning and control together |
-| `sac_localization`, `sac_localization_adapters`, `sac_localization_msgs` | state estimation configured from YAML (any number of sensors, exchangeable EKF/UKF and motion models). **Design stage**: interfaces and [DESIGN.md](sac_localization/DESIGN.md), no implementation yet. |
+| `sac_localization`, `sac_localization_adapters`, `sac_localization_msgs` | state estimation configured from YAML: any number of sensors, exchangeable engines (`ekf`, `iekf`, `ukf`) and motion models (`constant_acceleration`, `imu_driven`, `kinematic_bicycle`) as plugins; a local (`odom`) and a global (`map`) filter. See [DESIGN.md](sac_localization/DESIGN.md). |
 
 Planned: `sac_perception`.
 
@@ -32,6 +32,15 @@ ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true            # simul
 ros2 launch sac_bringup autonomy.launch.py                               # real car
 ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true route:=my_route.geojson
 ```
+With `localization:=true` the car drives on `sac_localization`'s estimate instead of a pose
+given from outside. In the simulation, start it without Gazebo's exact TF
+(`SIM_LAUNCH_ARGS="ground_truth_tf:=false"` in Docker-Workspaces):
+```bash
+ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true localization:=true
+ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true localization:=true estimator:=ukf motion_model:=imu_driven
+```
+The localization's error against Gazebo is published on `/sac/localization/error` (plotted in
+the viewer's layout).
 The car drives the site's route (`sac_planning/config/<site>.yaml`, default `site:=sonoma`);
 a loop is driven lap after lap, an open route to its end. Speed limits and the lookahead are
 in `sac_control/config/pure_pursuit.yaml` (10 m/s, 3 m/s^2 in corners by default). Stop it

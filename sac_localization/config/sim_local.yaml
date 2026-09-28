@@ -1,0 +1,76 @@
+# Local filter in the simulation: odom -> base_footprint from the IMUs and the wheels. Smooth
+# and never jumps; drifts slowly (no GNSS).
+localization_local:
+  ros__parameters:
+    frequency: 50.0               # [Hz]
+    world_frame: odom
+    base_frame: base_footprint
+    odom_frame: odom
+    history: 1.0                  # [s] how late a measurement may be
+
+    estimator:
+      type: ekf                   # ekf | iekf | ukf
+    motion_model:
+      type: constant_acceleration  # constant_acceleration | imu_driven | kinematic_bicycle
+      # Random walk per sqrt(s): x y z
+      position_noise: [0.05, 0.05, 0.05]
+      orientation_noise: [0.01, 0.01, 0.01]
+      velocity_noise: [0.2, 0.2, 0.2]
+      angular_velocity_noise: [0.3, 0.3, 0.6]
+      acceleration_noise: [3.0, 3.0, 1.0]
+      gyro_bias_noise: 1.0e-4
+      accel_bias_noise: 1.0e-3
+
+    initial_state:
+      pose_from: origin
+    initial_covariance:
+      position: 1.0e-4
+      roll_pitch: 0.01
+      yaw: 1.0e-4
+
+    sensors:
+      names: [middle_imu, front_imu, back_imu, wheels, standstill, nonholonomic]
+      middle_imu:
+        type: imu
+        topic: /sac/sensors/middle_imu/imu
+        use: [angular_velocity, linear_acceleration]
+        # Gazebo's IMU messages have no covariance; the simulated noise is 0.0017 rad/s and
+        # 0.012 m/s^2, a bit more here for what the models leave out (vibration, lever arms)
+        angular_velocity_covariance: [1.0e-5, 1.0e-5, 1.0e-5]
+        linear_acceleration_covariance: [0.01, 0.01, 0.01]
+        # Gyros see fast real rotations (bumps, slides) the motion model does not expect:
+        # keep them; reject accelerometer spikes (impacts)
+        angular_velocity_rejection_threshold: 50.0
+        linear_acceleration_rejection_threshold: 5.0
+      front_imu:
+        type: imu
+        topic: /sac/sensors/front_imu/imu
+        use: [angular_velocity]
+        angular_velocity_covariance: [1.0e-5, 1.0e-5, 1.0e-5]
+        angular_velocity_rejection_threshold: 50.0
+      back_imu:
+        type: imu
+        topic: /sac/sensors/back_imu/imu
+        use: [angular_velocity]
+        angular_velocity_covariance: [1.0e-5, 1.0e-5, 1.0e-5]
+        angular_velocity_rejection_threshold: 50.0
+      wheels:
+        type: wheel
+        topic: /joint_states
+        wheel_radius: 0.30
+        wheel_base: 1.873
+        covariance: [0.01, 0.001]         # speed [m/s]^2, yaw rate [rad/s]^2
+      standstill:
+        type: zero_velocity
+        topic: /joint_states
+        wheel_radius: 0.30
+        threshold: 0.02                   # [m/s]
+      nonholonomic:
+        type: nonholonomic
+        lever_arm: [-0.9365, 0.0, 0.0]    # rear axle
+        covariance: [0.01, 0.01]
+
+    outputs:
+      tf: true
+      odometry: /sac/localization/odometry_local
+      status: /sac/localization/status_local

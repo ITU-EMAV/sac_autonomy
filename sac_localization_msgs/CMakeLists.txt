@@ -8,6 +8,7 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   msg/SensorStatus.msg
   msg/FilterStatus.msg
+  msg/EstimateError.msg
   DEPENDENCIES std_msgs
 )
 

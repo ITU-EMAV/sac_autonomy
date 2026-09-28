@@ -1,0 +1,104 @@
+# Global filter in the simulation: the car in the map from the local filter's sensors plus
+# the two GNSS antennas. Publishes map -> odom (the local filter publishes odom -> base).
+localization_global:
+  ros__parameters:
+    frequency: 50.0               # [Hz]
+    world_frame: map
+    base_frame: base_footprint
+    odom_frame: odom
+    history: 1.0                  # [s] how late a measurement may be
+    # The same datum as the routes (sac_planning/config/sonoma.yaml) and the Gazebo world
+    datum:
+      latitude: 38.1628083
+      longitude: -122.4579944
+      altitude: 0.0
+      heading: 0.83               # [deg] counter-clockwise from east to the map's x axis
+    initial_pose_topic: /initialpose
+
+    estimator:
+      type: ekf                   # ekf | iekf | ukf
+    motion_model:
+      type: constant_acceleration  # constant_acceleration | imu_driven | kinematic_bicycle
+      position_noise: [0.05, 0.05, 0.05]
+      orientation_noise: [0.01, 0.01, 0.01]
+      velocity_noise: [0.2, 0.2, 0.2]
+      angular_velocity_noise: [0.3, 0.3, 0.6]
+      acceleration_noise: [3.0, 3.0, 1.0]
+      gyro_bias_noise: 1.0e-4
+      accel_bias_noise: 1.0e-3
+
+    # Start from the two antennas, averaged over 2 s while the car stands still
+    initial_state:
+      pose_from: gnss
+      gnss_duration: 2.0
+    initial_covariance:
+      position: 0.25
+      roll_pitch: 0.01
+      yaw: 0.01                   # from the antenna baseline
+      yaw_unknown: 4.0            # with one antenna
+    # Added when a sensor with max_rejections_in_a_row keeps disagreeing
+    recovery_covariance:
+      position: 4.0
+      yaw: 0.25
+
+    sensors:
+      names: [middle_imu, front_imu, back_imu, wheels, standstill, nonholonomic, gnss_front_right, gnss_rear_left]
+      middle_imu:
+        type: imu
+        topic: /sac/sensors/middle_imu/imu
+        use: [angular_velocity, linear_acceleration]
+        angular_velocity_covariance: [1.0e-5, 1.0e-5, 1.0e-5]
+        linear_acceleration_covariance: [0.01, 0.01, 0.01]
+        # Gyros see fast real rotations (bumps, slides) the motion model does not expect:
+        # keep them; reject accelerometer spikes (impacts)
+        angular_velocity_rejection_threshold: 50.0
+        linear_acceleration_rejection_threshold: 5.0
+      front_imu:
+        type: imu
+        topic: /sac/sensors/front_imu/imu
+        use: [angular_velocity]
+        angular_velocity_covariance: [1.0e-5, 1.0e-5, 1.0e-5]
+        angular_velocity_rejection_threshold: 50.0
+      back_imu:
+        type: imu
+        topic: /sac/sensors/back_imu/imu
+        use: [angular_velocity]
+        angular_velocity_covariance: [1.0e-5, 1.0e-5, 1.0e-5]
+        angular_velocity_rejection_threshold: 50.0
+      wheels:
+        type: wheel
+        topic: /joint_states
+        wheel_radius: 0.30
+        wheel_base: 1.873
+        covariance: [0.01, 0.001]
+      standstill:
+        type: zero_velocity
+        topic: /joint_states
+        wheel_radius: 0.30
+        threshold: 0.02
+      nonholonomic:
+        type: nonholonomic
+        lever_arm: [-0.9365, 0.0, 0.0]
+        covariance: [0.01, 0.01]
+      # The simulated receivers: 0.3 m horizontal, 0.5 m vertical (gazebo_environment)
+      gnss_front_right:
+        type: gnss_position
+        topic: /sac/sensors/navsat_front_right/navsat
+        covariance: [0.09, 0.09, 0.25]    # east, north, up [m^2]
+        rejection_threshold: 5.0
+        max_rejections_in_a_row: 10       # 1 s of disagreement: the estimate is lost, recover
+      gnss_rear_left:
+        type: gnss_position
+        topic: /sac/sensors/navsat_rear_left/navsat
+        covariance: [0.09, 0.09, 0.25]
+        rejection_threshold: 5.0
+        max_rejections_in_a_row: 10
+
+    outputs:
+      tf: true
+      odometry: /sac/localization/odometry
+      fix: /sac/localization/fix
+      status: /sac/localization/status
+      # Simulation only: the error against Gazebo's exact pose
+      ground_truth: /sac/ground_truth/pose
+      error: /sac/localization/error

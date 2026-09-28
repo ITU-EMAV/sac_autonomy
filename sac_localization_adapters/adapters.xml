@@ -1,0 +1,26 @@
+<library path="sac_localization_adapters">
+  <class name="imu" type="sac_localization::ImuAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>sensor_msgs/Imu: angular velocity, specific force, orientation; per-IMU biases</description>
+  </class>
+  <class name="gnss_position" type="sac_localization::GnssPositionAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>sensor_msgs/NavSatFix: antenna position in the map, lever arm from TF</description>
+  </class>
+  <class name="wheel" type="sac_localization::WheelAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>sensor_msgs/JointState: rear-axle speed and yaw rate from steering</description>
+  </class>
+  <class name="zero_velocity" type="sac_localization::ZeroVelocityAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>sensor_msgs/JointState: standing still when the wheels stop</description>
+  </class>
+  <class name="nonholonomic" type="sac_localization::NonholonomicAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>No topic: the rear axle does not slide sideways or jump</description>
+  </class>
+  <class name="odometry" type="sac_localization::OdometryAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>nav_msgs/Odometry: twist, and pose in the world frame</description>
+  </class>
+  <class name="twist" type="sac_localization::TwistAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>geometry_msgs/TwistWithCovarianceStamped</description>
+  </class>
+  <class name="pose" type="sac_localization::PoseAdapter" base_class_type="sac_localization::SensorAdapter">
+    <description>geometry_msgs/PoseWithCovarianceStamped in the world frame</description>
+  </class>
+</library>

@@ -32,6 +32,7 @@ class PositionModel : public MeasurementModel
 public:
   explicit PositionModel(const Eigen::Vector3d & lever_arm);
   int dimension() const override { return 3; }
+  const Eigen::Vector3d & leverArm() const { return lever_arm_; }
   Eigen::VectorXd predict(const State & x) const override;
   bool jacobian(const State & x, Eigen::MatrixXd & H) const override;
 

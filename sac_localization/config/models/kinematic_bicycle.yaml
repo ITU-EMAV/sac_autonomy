@@ -1,0 +1,13 @@
+# Overlay: the wheels (speed and steering) drive the prediction instead of being a
+# measurement.
+/**:
+  ros__parameters:
+    motion_model:
+      type: kinematic_bicycle
+      input: wheels
+      wheel_base: 1.873
+      speed_noise: 0.1            # [m/s]
+      steering_noise: 0.01        # [rad]
+    sensors:
+      wheels:
+        as_input: true

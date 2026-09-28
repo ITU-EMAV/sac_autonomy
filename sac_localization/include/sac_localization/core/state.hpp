@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -29,7 +30,7 @@ namespace sac_localization
 using Stamp = std::int64_t;
 
 inline double toSeconds(Stamp nanoseconds) { return static_cast<double>(nanoseconds) * 1e-9; }
-inline Stamp fromSeconds(double seconds) { return static_cast<Stamp>(seconds * 1e9); }
+inline Stamp fromSeconds(double seconds) { return static_cast<Stamp>(std::llround(seconds * 1e9)); }
 
 /// Names of the core blocks. Frames: `world` is map (global filter) or odom (local filter),
 /// `body` is base_footprint.

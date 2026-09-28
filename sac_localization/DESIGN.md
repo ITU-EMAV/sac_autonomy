@@ -119,6 +119,8 @@ ROS 2 parameters cannot hold a list of maps, so sensors are named in `sensors.na
 configured under `sensors.<name>`. Every noise value is a parameter that can be changed while
 the node runs (`ros2 param set`, Lichtblick's parameter panel).
 
+The full simulation configs are `config/sim_local.yaml` and `config/sim_global.yaml`; in short:
+
 ```yaml
 localization_global:
   ros__parameters:
@@ -128,60 +130,58 @@ localization_global:
     odom_frame: odom                # the global filter publishes map -> odom
     history: 1.0                    # [s] how late a measurement may be
     datum: {latitude: 38.1628083, longitude: -122.4579944, altitude: 0.0, heading: 0.83}
+    initial_pose_topic: /initialpose
 
     estimator:
-      type: ekf                     # ekf | ukf
+      type: ekf                     # ekf | iekf | ukf
     motion_model:
-      type: constant_acceleration
-      acceleration_noise: [1.0, 0.5, 0.2]     # [m/s^2/sqrt(s)] x y z
-      angular_acceleration_noise: [0.2, 0.2, 0.5]
-      bias_random_walk: {gyro: 1.0e-4, accel: 1.0e-3}
+      type: constant_acceleration   # constant_acceleration | imu_driven | kinematic_bicycle
+      acceleration_noise: [3.0, 3.0, 1.0]       # random walk per sqrt(s), x y z
+      angular_velocity_noise: [0.3, 0.3, 0.6]
+      gyro_bias_noise: 1.0e-4
     initial_state:
-      pose_from: first_gnss         # config | first_gnss | initial_pose topic
-      covariance: {position: 100.0, yaw: 10.0, velocity: 1.0}
+      pose_from: gnss               # origin | config | gnss | initial_pose
+      gnss_duration: 2.0            # [s] averaging the antennas while standing
+    initial_covariance: {position: 0.25, roll_pitch: 0.01, yaw: 0.01}
+    recovery_covariance: {position: 4.0, yaw: 0.25}
 
     sensors:
-      names: [middle_imu, front_imu, gnss_front_right, gnss_rear_left, wheels, nonholonomic]
+      names: [middle_imu, wheels, nonholonomic, gnss_front_right, gnss_rear_left]
       middle_imu:
         type: imu
         topic: /sac/sensors/middle_imu/imu
         use: [angular_velocity, linear_acceleration]
-        estimate_biases: true
-      front_imu:
-        type: imu
-        topic: /sac/sensors/front_imu/imu
-        use: [angular_velocity]
-      gnss_front_right:
-        type: gnss_position
-        topic: /sac/sensors/navsat_front_right/navsat
-        rejection_threshold: 5.0    # [sigma]
-        max_delay: 0.3              # [s]
-      gnss_rear_left:
-        type: gnss_position
-        topic: /sac/sensors/navsat_rear_left/navsat
+        angular_velocity_covariance: [1.0e-5, 1.0e-5, 1.0e-5]
+        linear_acceleration_covariance: [0.01, 0.01, 0.01]
+        angular_velocity_rejection_threshold: 50.0
       wheels:
         type: wheel
         topic: /joint_states
-        speed_joints: [rear_left_wheel_joint, rear_right_wheel_joint]
-        steering_joints: [front_left_wheel_steering_joint, front_right_wheel_steering_joint]
-        wheel_radius: 0.30
-        wheel_base: 1.873
-        covariance: [0.05, 0.02]    # speed [m/s]^2, yaw rate [rad/s]^2
+        covariance: [0.01, 0.001]   # speed [m/s]^2, yaw rate [rad/s]^2
       nonholonomic:
         type: nonholonomic
-        covariance: [0.01, 0.01]
+        lever_arm: [-0.9365, 0.0, 0.0]   # rear axle
+      gnss_front_right:
+        type: gnss_position
+        topic: /sac/sensors/navsat_front_right/navsat
+        covariance: [0.09, 0.09, 0.25]   # east, north, up [m^2]
+        max_rejections_in_a_row: 10
+      gnss_rear_left: {type: gnss_position, topic: /sac/sensors/navsat_rear_left/navsat}
 
     outputs:
       tf: true
       odometry: /sac/localization/odometry
       fix: /sac/localization/fix
       status: /sac/localization/status
-      ground_truth: /sac/ground_truth/pose   # simulation only: publishes the error
+      ground_truth: /sac/ground_truth/pose   # simulation only
+      error: /sac/localization/error
 ```
 
 Common options of every topic-based sensor: `topic`, `frame` (overrides frame_id), `use`,
-`covariance` (overrides the message's, diagonal) or `covariance_scale`,
-`rejection_threshold`, `max_delay`, `as_input`, `enabled`.
+a covariance per quantity (overrides the message's) or `covariance_scale`,
+`rejection_threshold` (and per quantity for the IMU), `max_rejections_in_a_row`,
+`max_delay`, `as_input`, `enabled`. The adapters' header
+(`sac_localization_adapters/adapters.hpp`) lists each adapter's own parameters.
 
 ## Two instances (REP 105)
 
@@ -210,7 +210,83 @@ rules for the config:
 - The core has no ROS: unit tests per model and estimator, and an offline tool that replays a
   bag through several configs (EKF vs UKF, noise sets) and compares them.
 
-## Implementation order
+## Status
+
+Implemented and tested (13 unit tests in `test/`, plus the simulation):
+- core: state on a manifold, geodesy, all measurement models (analytic Jacobians checked
+  against numeric ones), the fuser (late measurements are replayed; too late ones dropped;
+  a clock jump back restarts the filter)
+- engines: `ekf`, `iekf` (iterated EKF), `ukf`
+- motion models: `constant_acceleration`, `imu_driven`, `kinematic_bicycle`
+- adapters: `imu`, `gnss_position`, `wheel`, `zero_velocity`, `nonholonomic`, `odometry`,
+  `twist`, `pose`
+- node: local and global instances, start from the GNSS antennas (position and yaw from the
+  baseline), `/initialpose`, `~/reset`, live tuning of adapter noise and the motion model
+- outputs: TF, odometry, fix, status, and in the simulation the error against Gazebo
+- configs `config/sim_{local,global}.yaml`, overlays `config/models/*.yaml`,
+  `launch/localization.launch.py`; `sac_bringup`'s `autonomy.launch.py localization:=true`
+
+Not yet: the `heading`, `magnetometer`, `gnss_velocity`, `geo_pose` and vendor adapters (no
+source for them in the simulation), and the real car's `car_*.yaml`.
+
+### Results in the simulation
+One recorded lap at 10 m/s (Sonoma, GNSS noise 0.3 m horizontal), replayed through every
+combination. Error of the global filter against Gazebo's exact pose, after the first 5 s:
+
+| Engine + motion model | Position mean | Position p95 | Position max | Yaw p95 |
+|---|---|---|---|---|
+| ekf + constant_acceleration | 0.069 m | 0.136 m | 0.22 m | 0.48 deg |
+| iekf + constant_acceleration | 0.069 m | 0.136 m | 0.22 m | 0.48 deg |
+| ukf + constant_acceleration | 0.069 m | 0.136 m | 0.22 m | 0.48 deg |
+| ekf / iekf / ukf + imu_driven | 0.069 m | 0.135 m | 0.22 m | 0.49 deg |
+| ekf / iekf / ukf + kinematic_bicycle | 0.088 m | 0.197 m | 0.30 m | 0.56 deg |
+| ekf, GNSS arriving 0.2 s late | 0.074 m | 0.146 m | 0.24 m | 0.48 deg |
+
+- Once converged the engines agree to the millimetre: with this much GNSS the problem is
+  nearly linear. They differ at the start: from a 30 degree yaw error the yaw is within 2
+  degrees after 0.9 s (iekf), 1.0 s (ekf), 1.1 s (ukf).
+- `kinematic_bicycle` is the worst: it trusts the wheels for the whole prediction.
+- Late GNSS is handled by the replay: 0.2 s late (2 m at 10 m/s) costs 5 mm.
+- Defaults: `ekf` + `constant_acceleration` (as good as any, the cheapest).
+
+### Robustness: a bump that made the filter lose itself
+Over the crest after Sonoma's first hairpin the simulated car (no suspension) takes off and
+lands hard; the landing turns it by ~20 degrees within a quarter of a second and slides it
+sideways at 1.4 m/s. The first version lost itself there, twice while driving on it:
+1. The gyros measured the real turn, but the motion model did not expect it, so they were
+   rejected as outliers (all three IMUs, 0.75 s): 23 degrees of yaw error.
+2. With that yaw the GNSS disagreed and was rejected as well, for good: the error grew by
+   2.5 m/s and the controller stopped the car (4 m from the path).
+
+Fixes, both general:
+- The IMU adapter fuses gyro and accelerometer as separate measurements with their own
+  thresholds: gyros high (50 sigma: they measure real rotations), accelerometers 5 sigma
+  (impacts spike them).
+- `max_rejections_in_a_row` (set for the GNSS): after that many rejections in a row the
+  filter widens its position and yaw uncertainty (`recovery_covariance`) so it takes the
+  sensor again, instead of rejecting it for ever. On the real car this also covers GNSS
+  jumps after tunnels or multipath.
+
+On the same recording the fixed filter stays within 0.56 m and 3.8 degrees through the bump
+and is back to ~0.1 m after 3 s.
+
+### Driving on it
+The car driving a full lap of Sonoma on the global filter's `map -> base_footprint`
+(simulation with `ground_truth_tf:=false`, pure pursuit, 8 m/s):
+
+| | mean | p95 | max |
+|---|---|---|---|
+| Distance from the path (as the controller sees it) | 0.09 m | 0.23 m | 1.76 m (the crest landing) |
+| Localization error against Gazebo | 0.07 m | 0.16 m | 0.79 m |
+| Yaw error | | 0.6 deg | |
+
+At 10 m/s the crest landing throws the car 1.5-4 m sideways whatever drives it (with
+Gazebo's exact pose too) and sometimes rolls it over: a limit of the simulated car, which has
+no suspension (see gazebo_environment's readme). One 8 m/s attempt also ran 4.3 m wide in the
+hill-top corner at the far west of the track (-530, 215) and was stopped by the controller's
+4 m limit; the localization error there stayed below 1.3 m.
+
+## Implementation order (see Status for what is done)
 
 1. Core: `State`, geodesy (checked against sac_planning), measurement models with numeric
    vs analytic Jacobian tests, `Fuser`.
