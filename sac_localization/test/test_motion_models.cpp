@@ -98,6 +98,24 @@ TEST(DynamicBicycle, NumericJacobianIsFinite)
   EXPECT_TRUE(F.allFinite());
 }
 
+TEST(KinematicBicycle, SpeedFromTheStateIgnoresTheWheelSpeed)
+{
+  MapParams params;
+  params.strings["input"] = "wheels";
+  params.strings["speed_from"] = "state";
+  KinematicBicycle m;
+  m.initialize(params);
+  StateLayoutBuilder b;
+  State x(b.build());
+  x.vector(blocks::kLinearVelocity) = Eigen::Vector3d(8.0, 0.0, 0.0);
+  const Inputs u = wheels(10.0, 0.0);  // a spinning wheel
+  for (int i = 0; i < 100; ++i) {
+    x = m.predict(x, 0.01, u);
+  }
+  EXPECT_NEAR(x.linearVelocity().x(), 8.0, 1e-9);
+  EXPECT_NEAR(x.position().x(), 8.0, 1e-6);
+}
+
 TEST(DynamicBicycle, ManualStiffnessAddsNoState)
 {
   const DynamicBicycle m = model();

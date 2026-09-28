@@ -52,6 +52,7 @@ private:
 /// and height follow a random walk that the IMUs and GNSS correct. Parameters: input,
 /// wheel_base, speed_noise, steering_noise, plus BlockNoise. Without an input yet it predicts
 /// like ConstantAcceleration.
+///   speed_from: state (default) or input, as for DynamicBicycle.
 class KinematicBicycle : public ConstantAcceleration
 {
 public:
@@ -65,6 +66,7 @@ private:
   double wheel_base_ = 1.873;
   double speed_noise_ = 0.1;
   double steering_noise_ = 0.01;
+  bool speed_from_state_ = true;
 };
 
 /// Dynamic bicycle (single-track) model: like KinematicBicycle, the wheels' speed and

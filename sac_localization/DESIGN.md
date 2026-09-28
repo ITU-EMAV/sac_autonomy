@@ -332,6 +332,19 @@ constant_acceleration stays the default as it needs no car parameters; dynamic_b
 (`motion_model:=dynamic_bicycle`) needs the car's mass, yaw inertia, axle distances and
 cornering stiffness (config/models/dynamic_bicycle.yaml), to be measured on the real car.
 
+### Kinematic bicycle: the wheel speed as a measurement too
+kinematic_bicycle had the same weakness as the first dynamic_bicycle: the wheel speed as its
+input. It now takes `speed_from` too (default `state`; the overlay config measures the wheel
+speed). Replays, EKF, GNSS 1 m:
+
+| Recording | speed_from: input (mean / p95 / max) | speed_from: state | Yaw p95 |
+|---|---|---|---|
+| braking slide (rear wheels locked) | 0.32 / 0.78 / 3.65 m | 0.15 / 0.33 / 0.62 m | 2.35 -> 1.96 deg |
+| dry lap | 0.21 / 0.44 / 0.83 m | 0.21 / 0.45 / 0.82 m | 1.05 -> 1.05 deg |
+| wet lap | 0.25 / 0.52 / 1.00 m | 0.25 / 0.54 / 0.99 m | 1.65 -> 1.63 deg |
+
+The same where the wheels roll, far better where they slide.
+
 ### Cornering stiffness: manual or estimated
 `cornering_stiffness_mode: manual` (default) uses the configured values; `estimate` adds the
 logarithm of a factor on them to the state (`cornering_stiffness_estimate: grip`, one for
