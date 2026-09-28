@@ -95,6 +95,8 @@
   <xacro:property name="middle_imu_xyz" value="0 0 0.5" />
   <xacro:property name="front_imu_xyz" value="${wheel_base / 2} 0 0.5" />
   <xacro:property name="back_imu_xyz" value="${-wheel_base / 2} 0 0.5" />
+  <!-- 2D lidar on the front bumper, level (not measured) -->
+  <xacro:property name="front_lidar_xyz" value="${body_length / 2 + 0.05} 0 0.45" />
 
   <!-- ============================== Body ============================== -->
   <link name="base_footprint" />
@@ -276,5 +278,9 @@
   <xacro:vlp16 name="roof_lidar" parent_link="roof_rack">
     <origin xyz="${lidar_xyz}" rpy="0 0 0" />
   </xacro:vlp16>
+
+  <xacro:lidar_2d name="front_lidar" parent_link="link_chassis">
+    <origin xyz="${front_lidar_xyz}" rpy="0 0 0" />
+  </xacro:lidar_2d>
 
 </robot>

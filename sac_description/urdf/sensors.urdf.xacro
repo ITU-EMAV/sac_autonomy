@@ -59,6 +59,29 @@
         </link>
     </xacro:macro>
 
+    <!-- ============================== 2D lidar ============================== -->
+    <!-- A generic planar scanner (model not chosen yet); frame <name>_frame at the scan
+         plane's centre, x forward -->
+    <xacro:macro name="lidar_2d" params="name parent_link *origin">
+        <joint name="${name}_joint" type="fixed">
+            <parent link="${parent_link}" />
+            <child link="${name}_frame" />
+            <xacro:insert_block name="origin" />
+        </joint>
+
+        <link name="${name}_frame">
+            <xacro:inertial_dummy />
+            <visual>
+                <geometry>
+                    <cylinder radius="0.04" length="0.07" />
+                </geometry>
+                <material name="dark_grey">
+                    <color rgba="0.2 0.2 0.2 1.0" />
+                </material>
+            </visual>
+        </link>
+    </xacro:macro>
+
     <!-- ============================== Stereolabs ZED 2 ============================== -->
     <!--
       Frame names follow the ZED ROS 2 wrapper (<name>_camera_link, _camera_center,

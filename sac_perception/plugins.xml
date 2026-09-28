@@ -1,0 +1,26 @@
+<library path="sac_perception_plugins">
+  <class name="crop_box" type="sac_perception::CropBox" base_class_type="sac_perception::PointFilter">
+    <description>Drops the points inside (or outside) a box: the car itself</description>
+  </class>
+  <class name="ground_height" type="sac_perception::GroundHeight" base_class_type="sac_perception::PointFilter">
+    <description>Ground: points below a height over base_footprint (flat ground only)</description>
+  </class>
+  <class name="ground_patchwork" type="sac_perception::GroundPatchwork" base_class_type="sac_perception::PointFilter">
+    <description>Ground segmentation after Patchwork++ (CZM, R-VPF, R-GPF, GLE, A-GLE, TGR, RNR)</description>
+  </class>
+  <class name="height_band" type="sac_perception::HeightBand" base_class_type="sac_perception::PointFilter">
+    <description>Keeps obstacle points between two heights over the ground</description>
+  </class>
+  <class name="voxel" type="sac_perception::Voxel" base_class_type="sac_perception::PointFilter">
+    <description>One point per voxel</description>
+  </class>
+  <class name="pointcloud" type="sac_perception::PointCloudSource" base_class_type="sac_perception::GridSource">
+    <description>sensor_msgs/PointCloud2 (3D lidar, depth camera) through a filter chain</description>
+  </class>
+  <class name="laser_scan" type="sac_perception::LaserScanSource" base_class_type="sac_perception::GridSource">
+    <description>sensor_msgs/LaserScan (2D lidar)</description>
+  </class>
+  <class name="occupancy_grid" type="sac_perception::OccupancyGridSource" base_class_type="sac_perception::GridSource">
+    <description>nav_msgs/OccupancyGrid from another node (e.g. a camera)</description>
+  </class>
+</library>

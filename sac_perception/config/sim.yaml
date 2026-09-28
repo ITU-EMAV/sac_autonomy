@@ -1,0 +1,64 @@
+# The local occupancy grid in the simulation: the roof lidar (VLP-16) and the front 2D lidar.
+# A sensor more is a source more: its type (by message), topic and parameters. Where it sits
+# comes from TF (the URDF).
+/**:
+  ros__parameters:
+    grid_frame: odom
+    base_frame: base_footprint
+    grid:
+      size: 80.0                  # [m] square around the car
+      resolution: 0.2             # [m]
+      recenter_distance: 2.0      # [m] the window moves once the car is this far off its centre
+    rate: 20.0                    # [Hz]
+    occupied_threshold: 0.65
+
+    sources:
+      names: [roof_lidar, front_lidar]
+
+      roof_lidar:
+        type: pointcloud
+        topic: /sac/sensors/roof_lidar/points
+        filters: [self, ground, band]
+        self:                     # the car: body, rack and the sensor posts
+          type: crop_box
+          min: [-1.5, -0.95, -0.3]
+          max: [1.5, 0.95, 2.1]
+          max_range: 60.0         # [m] sparse and noisy beyond
+        ground:                   # Patchwork++'s steps and defaults (ground_patchwork.hpp)
+          type: ground_patchwork
+          min_range: 2.7          # [m] around the sensor
+          max_range: 80.0         # the zones' edges follow from these two
+          num_rings_each_zone: [2, 4, 4, 4]
+          num_sectors_each_zone: [16, 32, 54, 32]
+          th_seeds: 0.125
+          th_dist: 0.125
+          uprightness_thr: 0.707  # normal z: planes steeper than 45 deg are not ground
+          num_min_pts: 3          # VLP-16: sparse rings (Patchwork++'s 10 is for 64 beams)
+          enable_RNR: true        # reflections under the ground (needs intensity)
+          enable_RVPF: true       # vertical structures out first (zone 0)
+          enable_TGR: true        # flat enough rejected bins back to ground
+          enable_AGLE: true       # learn the thresholds from the ground seen
+        band:
+          type: height_band
+          min: 0.25               # [m] over the ground: kerbs and bumps are drivable
+          max: 2.5
+        provides_ground: true     # its ground points go into the shared ground map
+        clear_height: 0.3         # free space where a ray runs this low over the ground
+        max_clear_range: 40.0
+        hit: 0.85
+        miss: 0.4
+        decay: 0.2                # [1/s] what is out of sight fades in a few seconds
+
+      front_lidar:
+        type: laser_scan
+        topic: /sac/sensors/front_lidar/scan
+        max_clear_range: 30.0
+        clear_max_range: false
+        # Its plane (0.45 m up) meets the road where it rises ahead: returns within 0.2 m of
+        # the ground the roof lidar saw there are road, not obstacles
+        ground_margin: 0.2
+        ground_search_radius: 1.0
+        ground_max_age: 3.0
+        hit: 0.8
+        miss: 0.35
+        decay: 0.5

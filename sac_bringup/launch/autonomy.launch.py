@@ -6,6 +6,8 @@ Arguments:
   use_sim_time:=true   in the simulation
   localization:=true   also start sac_localization, which then gives map -> base_footprint
                        (run the simulation with ground_truth_tf:=false)
+  perception:=true     also start sac_perception: the local occupancy grid
+                       (/sac/perception/grid) from the lidars
   estimator:=, motion_model:=
                        passed to the localization (see sac_localization's launch file)
   site:=sonoma         site config sac_planning/config/<site>.yaml (datum and default route)
@@ -80,6 +82,14 @@ def generate_launch_description():
             DeclareLaunchArgument("localization", default_value="false"),
             DeclareLaunchArgument("estimator", default_value=""),
             DeclareLaunchArgument("motion_model", default_value=""),
+            DeclareLaunchArgument("perception", default_value="false"),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(get_package_share_directory("sac_perception"), "launch", "perception.launch.py")
+                ),
+                launch_arguments={"use_sim_time": LaunchConfiguration("use_sim_time")}.items(),
+                condition=IfCondition(LaunchConfiguration("perception")),
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(get_package_share_directory("sac_localization"), "launch", "localization.launch.py")

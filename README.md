@@ -18,8 +18,9 @@ Both workspaces include this repository as a git submodule under `src/`.
 | `sac_control` | follows the path: `pure_pursuit` (steering) with a speed profile from the path's curvature |
 | `sac_bringup` | `autonomy.launch.py`: planning and control together |
 | `sac_localization`, `sac_localization_adapters`, `sac_localization_msgs` | state estimation configured from YAML: any number of sensors, exchangeable engines (`ekf`, `iekf`, `ukf`) and motion models (`constant_acceleration`, `imu_driven`, `kinematic_bicycle`, `dynamic_bicycle`) as plugins; a local (`odom`) and a global (`map`) filter. See [DESIGN.md](sac_localization/DESIGN.md). |
+| `sac_perception` | the local occupancy grid around the car, from any number of sensors set in YAML (3D and 2D lidars, depth cameras, other nodes' grids), with exchangeable ground segmentation and point filters as plugins. See [DESIGN.md](sac_perception/DESIGN.md). |
 
-Planned: `sac_perception`.
+Planned: a local planner (avoiding the grid's obstacles along the route).
 
 What belongs here: anything that runs from topics alone. Anything that opens a device, a
 serial port or a network socket to hardware belongs in `sac_drivers`; anything Gazebo-specific
@@ -41,6 +42,9 @@ ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true localization:=true
 ```
 The localization's error against Gazebo is published on `/sac/localization/error` (plotted in
 the viewer's layout).
+With `perception:=true` the local occupancy grid is published on `/sac/perception/grid`; in
+the simulation, obstacles are put on the track with `SIM_LAUNCH_ARGS="obstacles:=beside_route"`
+(gazebo_environment's `config/obstacles/`).
 The car drives the site's route (`sac_planning/config/<site>.yaml`, default `site:=sonoma`);
 a loop is driven lap after lap, an open route to its end. Speed limits and the lookahead are
 in `sac_control/config/pure_pursuit.yaml` (10 m/s, 3 m/s^2 in corners by default). Stop it
@@ -84,6 +88,7 @@ these names, types and meanings; a change here is a change in `sac_drivers` and
 | `/sac/sensors/navsat_front_right/navsat` | `sensor_msgs/NavSatFix` | `navsat_front_right_frame` | front-right antenna |
 | `/sac/sensors/navsat_rear_left/navsat` | `sensor_msgs/NavSatFix` | `navsat_rear_left_frame` | rear-left antenna |
 | `/sac/sensors/roof_lidar/points` | `sensor_msgs/PointCloud2` | `roof_lidar_frame` | VLP-16, returns only (no NaN/inf points) |
+| `/sac/sensors/front_lidar/scan` | `sensor_msgs/LaserScan` | `front_lidar_frame` | 2D lidar on the front bumper; no return: +inf |
 
 ### Vehicle
 | Topic | Type | Direction | Meaning |
@@ -97,6 +102,8 @@ these names, types and meanings; a change here is a change in `sac_drivers` and
 |---|---|---|
 | `/sac/planning/path` | `nav_msgs/Path` | the path to follow, in `map`, latched; a pose every ~0.5 m; a loop does not repeat its first pose. Every planning method publishes here. |
 | `/sac/planning/route_geojson` | `foxglove_msgs/GeoJSON` | the route on the world map, for a Map panel |
+| `/sac/perception/grid` | `nav_msgs/OccupancyGrid` | the local occupancy grid in `odom`, 80 x 80 m around the car, 20 Hz: -1 unknown, 0-100 occupancy |
+| `/sac/perception/timing` | `diagnostic_msgs/DiagnosticArray` | processing time per sensor source and of the grid step [ms] |
 | `/sac/control/lookahead` | `geometry_msgs/PointStamped` | the point the controller steers to |
 | `/sac/control/cross_track_error` | `std_msgs/Float64` | distance of the rear axle from the path [m], positive left |
 
