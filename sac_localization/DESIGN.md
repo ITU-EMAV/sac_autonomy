@@ -141,8 +141,8 @@ localization_global:
       gyro_bias_noise: 1.0e-4
     initial_state:
       pose_from: gnss               # origin | config | gnss | initial_pose
-      gnss_duration: 2.0            # [s] averaging the antennas while standing
-    initial_covariance: {position: 0.25, roll_pitch: 0.01, yaw: 0.01}
+      gnss_duration: 5.0            # [s] averaging the antennas while standing
+    initial_covariance: {position: 0.25, roll_pitch: 0.01, yaw: 0.05}
     recovery_covariance: {position: 4.0, yaw: 0.25}
 
     sensors:
@@ -164,7 +164,7 @@ localization_global:
       gnss_front_right:
         type: gnss_position
         topic: /sac/sensors/navsat_front_right/navsat
-        covariance: [0.09, 0.09, 0.25]   # east, north, up [m^2]
+        covariance: [1.0, 1.0, 2.25]     # east, north, up [m^2]
         max_rejections_in_a_row: 10
       gnss_rear_left: {type: gnss_position, topic: /sac/sensors/navsat_rear_left/navsat}
 
@@ -230,7 +230,7 @@ Not yet: the `heading`, `magnetometer`, `gnss_velocity`, `geo_pose` and vendor a
 source for them in the simulation), and the real car's `car_*.yaml`.
 
 ### Results in the simulation
-One recorded lap at 10 m/s (Sonoma, GNSS noise 0.3 m horizontal), replayed through every
+One recorded lap at 10 m/s (Sonoma, GNSS noise 0.3 m horizontal, rigid car), replayed through every
 combination. Error of the global filter against Gazebo's exact pose, after the first 5 s:
 
 | Engine + motion model | Position mean | Position p95 | Position max | Yaw p95 |
@@ -271,20 +271,19 @@ On the same recording the fixed filter stays within 0.56 m and 3.8 degrees throu
 and is back to ~0.1 m after 3 s.
 
 ### Driving on it
-The car driving a full lap of Sonoma on the global filter's `map -> base_footprint`
-(simulation with `ground_truth_tf:=false`, pure pursuit, 8 m/s):
+The car driving full laps of Sonoma on the global filter's `map -> base_footprint`
+(simulation with `ground_truth_tf:=false`, pure pursuit):
 
-| | mean | p95 | max |
+| Lap | Localization error mean / p95 / max | Yaw p95 | Distance from the path p95 / max |
 |---|---|---|---|
-| Distance from the path (as the controller sees it) | 0.09 m | 0.23 m | 1.76 m (the crest landing) |
-| Localization error against Gazebo | 0.07 m | 0.16 m | 0.79 m |
-| Yaw error | | 0.6 deg | |
+| 10 m/s, GNSS 1 m (a standalone receiver, as on the real car) | 0.16 / 0.37 / 0.63 m | 0.7 deg | 0.36 / 1.26 m |
+| 10 m/s, GNSS 0.3 m | 0.07 / 0.15 / 0.34 m | 0.6 deg | 0.25 / 0.73 m |
 
-At 10 m/s the crest landing throws the car 1.5-4 m sideways whatever drives it (with
-Gazebo's exact pose too) and sometimes rolls it over: a limit of the simulated car, which has
-no suspension (see gazebo_environment's readme). One 8 m/s attempt also ran 4.3 m wide in the
-hill-top corner at the far west of the track (-530, 215) and was stopped by the controller's
-4 m limit; the localization error there stayed below 1.3 m.
+The first laps (rigid simulated car) failed on the crest after the first hairpin: the car
+took off at 10 m/s and the landing threw it 1.5-4 m sideways or rolled it over, whatever
+drove it. With the suspension added to sac_description and Gazebo (springs and dampers on
+the wheels) the car stays on the ground there. The tables above use GNSS noise of 0.3 m for
+the replayed comparison and 1 m for `config/sim_global.yaml` now.
 
 ## Implementation order (see Status for what is done)
 

@@ -27,14 +27,14 @@ localization_global:
       gyro_bias_noise: 1.0e-4
       accel_bias_noise: 1.0e-3
 
-    # Start from the two antennas, averaged over 2 s while the car stands still
+    # Start from the two antennas, averaged over 5 s while the car stands still
     initial_state:
       pose_from: gnss
-      gnss_duration: 2.0
+      gnss_duration: 5.0
     initial_covariance:
       position: 0.25
       roll_pitch: 0.01
-      yaw: 0.01                   # from the antenna baseline
+      yaw: 0.05                   # from the antenna baseline (1 m noise, 5 s: ~10 deg)
       yaw_unknown: 4.0            # with one antenna
     # Added when a sensor with max_rejections_in_a_row keeps disagreeing
     recovery_covariance:
@@ -80,17 +80,17 @@ localization_global:
         type: nonholonomic
         lever_arm: [-0.9365, 0.0, 0.0]
         covariance: [0.01, 0.01]
-      # The simulated receivers: 0.3 m horizontal, 0.5 m vertical (gazebo_environment)
+      # The simulated receivers: 1 m horizontal, 1.5 m vertical, like a standalone receiver
       gnss_front_right:
         type: gnss_position
         topic: /sac/sensors/navsat_front_right/navsat
-        covariance: [0.09, 0.09, 0.25]    # east, north, up [m^2]
+        covariance: [1.0, 1.0, 2.25]      # east, north, up [m^2]
         rejection_threshold: 5.0
         max_rejections_in_a_row: 10       # 1 s of disagreement: the estimate is lost, recover
       gnss_rear_left:
         type: gnss_position
         topic: /sac/sensors/navsat_rear_left/navsat
-        covariance: [0.09, 0.09, 0.25]
+        covariance: [1.0, 1.0, 2.25]
         rejection_threshold: 5.0
         max_rejections_in_a_row: 10
 

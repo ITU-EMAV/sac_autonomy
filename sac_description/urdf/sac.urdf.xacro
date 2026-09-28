@@ -38,6 +38,21 @@
   <xacro:property name="com_x" value="${-wheel_base / 2 + 0.4 * wheel_base}" />
   <xacro:property name="com_z" value="0.55" />
 
+  <!-- Suspension (not measured): each wheel on a vertical spring and damper. Off by default,
+       so the model is rigid, which is all TF needs on the real car; the simulation turns it
+       on (suspension:=true) so the car does not bounce off bumps and crests.
+       Springs from the corner loads at a 1.4 Hz ride frequency (a usual passenger car value),
+       0.3 damping ratio; travel +-8 cm. -->
+  <xacro:arg name="suspension" default="false" />
+  <xacro:property name="suspension" value="$(arg suspension)" />
+  <xacro:property name="suspension_travel" value="0.08" />        <!-- [m] each way -->
+  <xacro:property name="suspension_frequency" value="1.4" />      <!-- [Hz] -->
+  <xacro:property name="suspension_damping_ratio" value="0.3" />
+  <xacro:property name="suspension_mass" value="5.0" />           <!-- hub and arm, per corner [kg] -->
+  <!-- Sprung mass on each corner, from the axle loads (40/60, see com_x) -->
+  <xacro:property name="front_corner_mass" value="${body_mass * 0.4 / 2}" />
+  <xacro:property name="rear_corner_mass" value="${body_mass * 0.6 / 2}" />
+
   <xacro:property name="max_speed" value="20.0" />        <!-- [m/s] forward -->
   <xacro:property name="max_reverse_speed" value="5.0" />
   <xacro:property name="max_acceleration" value="3.0" />  <!-- [m/s^2] -->
@@ -150,27 +165,62 @@
     </link>
   </xacro:macro>
 
+  <!-- With the suspension, a corner's wheel (or a front wheel's steering) hangs on
+       <corner>_suspension_link, which slides up and down on <corner>_suspension_joint
+       (prismatic, positive = compression); without it, on the chassis. The spring itself is
+       Gazebo's (gazebo_environment), from sac_description's values. -->
+  <xacro:macro name="corner" params="corner x y sprung_mass">
+    <xacro:if value="${suspension}">
+      <xacro:property name="stiffness" value="${sprung_mass * (2 * pi * suspension_frequency) ** 2}" />
+      <link name="${corner}_suspension_link">
+        <xacro:inertial_cuboid mass="${suspension_mass}" x="0.1" y="0.1" z="0.1" />
+      </link>
+      <joint name="${corner}_suspension_joint" type="prismatic">
+        <parent link="link_chassis" />
+        <child link="${corner}_suspension_link" />
+        <origin xyz="${x} ${y} ${wheel_radius}" rpy="0 0 0" />
+        <axis xyz="0 0 1" />
+        <limit effort="100000" velocity="10" lower="${-suspension_travel}" upper="${suspension_travel}" />
+        <dynamics damping="${2 * suspension_damping_ratio * sqrt(stiffness * sprung_mass)}" />
+      </joint>
+    </xacro:if>
+  </xacro:macro>
+
   <xacro:macro name="rear_wheel" params="side y">
+    <xacro:corner corner="rear_${side}" x="${-wheel_base / 2}" y="${y}" sprung_mass="${rear_corner_mass}" />
     <xacro:wheel_link name="rear_${side}_wheel" />
     <joint name="rear_${side}_wheel_joint" type="continuous">
-      <parent link="link_chassis" />
+      <xacro:if value="${suspension}">
+        <parent link="rear_${side}_suspension_link" />
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 0" />
+      </xacro:if>
+      <xacro:unless value="${suspension}">
+        <parent link="link_chassis" />
+        <origin xyz="${-wheel_base / 2} ${y} ${wheel_radius}" rpy="${-pi/2} 0 0" />
+      </xacro:unless>
       <child link="rear_${side}_wheel" />
-      <origin xyz="${-wheel_base / 2} ${y} ${wheel_radius}" rpy="${-pi/2} 0 0" />
       <axis xyz="0 0 1" />
       <limit effort="1000" velocity="${max_wheel_speed}" />
     </joint>
   </xacro:macro>
 
   <xacro:macro name="front_wheel" params="side y">
+    <xacro:corner corner="front_${side}" x="${wheel_base / 2}" y="${y}" sprung_mass="${front_corner_mass}" />
     <!-- 1 kg: a much lighter link between two joints makes the physics unsteady -->
     <link name="front_${side}_wheel_steering_link">
       <xacro:inertial_cuboid mass="1.0" x="0.1" y="0.1" z="0.1" />
     </link>
     <!-- Same frame as the wheel joint, so the steering axis is its -y (the car's up) -->
     <joint name="front_${side}_wheel_steering_joint" type="revolute">
-      <parent link="link_chassis" />
+      <xacro:if value="${suspension}">
+        <parent link="front_${side}_suspension_link" />
+        <origin xyz="0 0 0" rpy="${-pi/2} 0 0" />
+      </xacro:if>
+      <xacro:unless value="${suspension}">
+        <parent link="link_chassis" />
+        <origin xyz="${wheel_base / 2} ${y} ${wheel_radius}" rpy="${-pi/2} 0 0" />
+      </xacro:unless>
       <child link="front_${side}_wheel_steering_link" />
-      <origin xyz="${wheel_base / 2} ${y} ${wheel_radius}" rpy="${-pi/2} 0 0" />
       <axis xyz="0 -1 0" />
       <limit effort="1000" velocity="10" lower="${-steering_limit}" upper="${steering_limit}" />
     </joint>
