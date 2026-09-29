@@ -142,7 +142,7 @@ void RollingGrid::integrate(int layer_index, const Scan & scan)
   int i = 0;
   int j = 0;
   for (const Ray & ray : scan.rays) {
-    if (ray.hit && cell(ray.end.x(), ray.end.y(), i, j)) {
+    if (ray.hit && ray.mark && cell(ray.end.x(), ray.end.y(), i, j)) {
       const int k = index(i, j);
       if (hit_scan_[k] != scan_counter_) {
         hit_scan_[k] = scan_counter_;

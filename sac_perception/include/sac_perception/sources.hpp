@@ -28,10 +28,14 @@
 //     return, ground_max_age [s] (3.0)
 // Neither names a sensor: any number may provide or use it, and without a provider
 // ground_margin changes nothing.
+//   max_mark_range [m] (none): returns further away are not marked as obstacles, only the
+//     space before them is cleared (a 2D lidar far ahead often meets a road rising where
+//     no other sensor has seen the ground yet; near the car it covers what the others miss)
 
 #pragma once
 
 #include <functional>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -95,6 +99,9 @@ public:
     return timing_;
   }
 
+  /// Numbers about the last message for tuning (e.g. a ground filter's), with the timing
+  virtual std::vector<std::pair<std::string, double>> diagnostics() const { return {}; }
+
   /// Processes the message waiting for its TF, if the TF is there now (the node calls this
   /// every tick; no source ever blocks waiting for a transform).
   void retry();
@@ -116,13 +123,15 @@ protected:
   bool tooOld(const rclcpp::Time & stamp) const;
   void record(double milliseconds);
   void skip();
-  /// With ground_margin: returns lying on the known ground become free rays (grid locked)
-  void dropGroundHits(const RollingGrid & grid, Scan & scan, double time) const;
+  /// Before a scan goes into the grid (grid locked): with ground_margin, returns lying on the
+  /// known ground become free rays; returns beyond max_mark_range are not marked
+  void prepareRays(const RollingGrid & grid, Scan & scan, double time) const;
 
   bool provides_ground_ = false;
   double ground_margin_ = -1.0;  // < 0: off
   double ground_search_radius_ = 1.0;
   double ground_max_age_ = 3.0;
+  double max_mark_range_ = std::numeric_limits<double>::infinity();
 
   SourceContext context_;
   std::string name_;
@@ -155,9 +164,12 @@ protected:
 private:
   void onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & message);
   void publishDebug(const Cloud & cloud, const std_msgs::msg::Header & header);
+  std::vector<std::pair<std::string, double>> diagnostics() const override { return diagnostics_; }
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr debug_publisher_;
   std::vector<std::shared_ptr<PointFilter>> filters_;
+  std::vector<std::string> filter_names_;
+  std::vector<std::pair<std::string, double>> diagnostics_;
   float clear_height_ = 0.3f;
   float max_clear_range_ = 40.0f;
   bool clear_ = true;

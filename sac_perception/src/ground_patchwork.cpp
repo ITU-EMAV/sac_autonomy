@@ -427,6 +427,24 @@ void GroundPatchwork::apply(Cloud & cloud)
   }
 }
 
+std::vector<std::pair<std::string, double>> GroundPatchwork::diagnostics() const
+{
+  std::vector<std::pair<std::string, double>> d = {
+    {"not_ground_sparse", static_cast<double>(statistics_.sparse)},
+    {"not_ground_no_plane", static_cast<double>(statistics_.no_plane)},
+    {"not_ground_not_upright", static_cast<double>(statistics_.not_upright)},
+    {"not_ground_heading", static_cast<double>(statistics_.heading)},
+    {"not_ground_elevated", static_cast<double>(statistics_.elevated)},
+    {"off_plane", static_cast<double>(statistics_.off_plane)},
+    {"reverted", static_cast<double>(statistics_.reverted)},
+    {"sensor_height", sensor_height_}};
+  for (std::size_t i = 0; i < elevation_thr_.size(); ++i) {
+    d.emplace_back("elevation_thr_" + std::to_string(i), elevation_thr_[i]);
+    d.emplace_back("flatness_thr_" + std::to_string(i), flatness_thr_[i]);
+  }
+  return d;
+}
+
 void GroundPatchwork::updateThresholds()
 {
   for (int i = 0; i < num_rings_of_interest_; ++i) {

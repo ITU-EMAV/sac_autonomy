@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <Eigen/Core>
@@ -48,6 +49,8 @@ public:
   virtual void initialize(const Params & params) = 0;
   /// Not const: a filter may learn from the scans it sees (one instance per source)
   virtual void apply(Cloud & cloud) = 0;
+  /// Numbers about the last scan, for tuning (published with the source's timing)
+  virtual std::vector<std::pair<std::string, double>> diagnostics() const { return {}; }
 };
 
 /// Drops the points inside a box (the car itself: body, rack, sensor posts), or outside it

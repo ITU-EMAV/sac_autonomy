@@ -75,6 +75,8 @@ public:
     std::size_t reverted = 0;      // points of bins TGR made ground
   };
   const Statistics & statistics() const { return statistics_; }
+  /// The statistics and the learnt thresholds of the last scan
+  std::vector<std::pair<std::string, double>> diagnostics() const override;
 
   /// The thresholds learnt so far (A-GLE), per ring of interest
   const std::vector<double> & elevationThresholds() const { return elevation_thr_; }

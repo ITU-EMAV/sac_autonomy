@@ -73,6 +73,22 @@ TEST(Grid, A3dRayClearsOnlyWhereItRunsLow)
   EXPECT_EQ(at(g, l, 15.0, 0.05), 0.0f);
 }
 
+TEST(Grid, AnUnmarkedHitClearsTheWayButNotItsEnd)
+{
+  RollingGrid g(40.0, 0.2);
+  const int l = g.addLayer("scan", LayerParams{});
+  g.recenter(0.0, 0.0);
+  g.set(l, 12.05, 0.05, 2.0f);  // another sensor's obstacle there
+  Scan scan;
+  scan.origin = Eigen::Vector3f(0.0f, 0.0f, 0.5f);
+  Ray r = ray(12.05f, 0.05f, 0.5f, true);
+  r.mark = false;
+  scan.rays = {r};
+  g.integrate(l, scan);
+  EXPECT_LT(at(g, l, 6.0, 0.05), 0.0f);               // free before it
+  EXPECT_FLOAT_EQ(at(g, l, 12.05, 0.05), 2.0f);       // its end left alone
+}
+
 TEST(Grid, AHitIsNotClearedByItsOwnScan)
 {
   RollingGrid g(40.0, 0.2);

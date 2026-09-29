@@ -71,7 +71,13 @@ itself, so it is not in the default chain.
 Sources never wait for TF: a message whose `odom -> sensor` is not there yet is kept and
 processed at the next tick (at most 50 ms later). Before, waiting up to 100 ms counted as
 processing time and held up the node. In the simulation (Gazebo on the same CPU) the roof
-lidar then took 15 ms per scan on average, the front lidar 0.7 ms, a grid step 2.6 ms.
+lidar then takes 8 ms per scan on average (15 ms with two more perception nodes running for
+the comparison), the front lidar 0.4 ms, a grid step 1 ms.
+
+Each filter can report numbers about the last scan (`diagnostics()`), published with the
+source's timing on `/sac/perception/timing`: ground_patchwork gives why points were not
+ground (sparse bin, not upright, facing away, elevated), how many TGR reverted, and the
+learnt sensor height and thresholds, for tuning on the real car.
 
 ## Results in the simulation
 A lap of Sonoma (3.1 km, 10 m/s, ground truth TF) with ten obstacles 3-4 m beside the route
@@ -83,7 +89,17 @@ A lap of Sonoma (3.1 km, 10 m/s, ground truth TF) with ten obstacles 3-4 m besid
 | roof lidar, ground_patchwork | 8.6 % | 0.5 | 10 / 10 (small ones from 10-13 m) |
 | roof + front lidar | 24 % | 6.7 | 10 / 10 (from 19-30 m) |
 | roof + front lidar, shared ground map | 19 % | 3.3 | 10 / 10 (from 23-30 m) |
+| roof + front lidar, ground map, front marks up to 15 m | **4.4 %** | **0.24** | 10 / 10 (small ones from 13-16 m) |
 
-The occupied cells near an obstacle are all within 0.25 m of its footprint. The false
-obstacles left cluster at three places of the track (around (-30, -150), (-10, 232) and
-(-296, -18) in map), also the worst with the roof lidar alone: to be looked into.
+The occupied cells near an obstacle are all within 0.25 m of its footprint.
+
+Where the false obstacles came from, logged once a second over a lap with a grid per source
+and the ground filter's diagnostics: nearly all from the front 2D lidar, 14-29 m ahead,
+where its plane meets a rising road; the roof lidar alone had one or two cells at a few
+places, and ground_patchwork rejected no ground for elevation (the learnt sensor height
+stayed 1.76-1.80 m, true 1.79). The shared ground map did not catch them: from the roof the
+ground is seen in rings (20.5 and 34 m out on flat ground), and between them it is not known
+yet. So the front lidar marks obstacles only up to `max_mark_range` (15 m) and beyond that
+only clears the space before its returns: near the car it covers the roof lidar's blind
+zone, far away the roof lidar sees for both. What is left clusters on the steep twisting
+climb around (-31, -154).

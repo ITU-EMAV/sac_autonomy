@@ -128,6 +128,9 @@ void PerceptionNode::tick()
       keyValue("last_ms", t.last_ms), keyValue("mean_ms", t.count ? t.sum_ms / t.count : 0.0),
       keyValue("max_ms", t.max_ms), keyValue("messages", static_cast<double>(t.count)),
       keyValue("skipped", static_cast<double>(t.skipped))};
+    for (const auto & [key, value] : source->diagnostics()) {
+      status.values.push_back(keyValue(key, value));
+    }
     timing.status.push_back(status);
   }
   timing_publisher_->publish(timing);

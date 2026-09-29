@@ -37,6 +37,7 @@ void GridSource::initialize(const SourceContext & context, const std::string & n
   ground_margin_ = params_->getDouble("ground_margin", ground_margin_);
   ground_search_radius_ = params_->getDouble("ground_search_radius", ground_search_radius_);
   ground_max_age_ = params_->getDouble("ground_max_age", ground_max_age_);
+  max_mark_range_ = params_->getDouble("max_mark_range", max_mark_range_);
   if (params_->has("mount")) {
     const std::vector<double> m = params_->getDoubles("mount", {});
     if (m.size() != 6) {
@@ -145,17 +146,24 @@ void GridSource::record(double milliseconds)
   ++timing_.count;
 }
 
-void GridSource::dropGroundHits(const RollingGrid & grid, Scan & scan, double time) const
+void GridSource::prepareRays(const RollingGrid & grid, Scan & scan, double time) const
 {
-  if (ground_margin_ < 0.0) {
+  const bool limit = std::isfinite(max_mark_range_);
+  if (ground_margin_ < 0.0 && !limit) {
     return;
   }
   float ground = 0.0f;
   for (Ray & ray : scan.rays) {
-    if (ray.hit && grid.groundNear(ray.end.x(), ray.end.y(), ground_search_radius_, time, ground_max_age_, ground) &&
+    if (!ray.hit) {
+      continue;
+    }
+    if (ground_margin_ >= 0.0 &&
+      grid.groundNear(ray.end.x(), ray.end.y(), ground_search_radius_, time, ground_max_age_, ground) &&
       ray.end.z() - ground < ground_margin_)
     {
       ray.hit = false;  // the ground: free up to and at it
+    } else if (limit && std::hypot(ray.end.x() - scan.origin.x(), ray.end.y() - scan.origin.y()) > max_mark_range_) {
+      ray.mark = false;  // too far to trust: free before it, its end left alone
     }
   }
 }
@@ -182,6 +190,7 @@ void PointCloudSource::configure(const RosParams & params)
     auto instance = context_.filters->createSharedInstance(type);
     instance->initialize(filter_params);
     filters_.push_back(instance);
+    filter_names_.push_back(filter);
   }
 }
 
@@ -244,8 +253,12 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
     intensity.resize(count);
     cloud.intensity = std::move(intensity);
   }
-  for (const auto & filter : filters_) {
-    filter->apply(cloud);
+  diagnostics_.clear();
+  for (std::size_t f = 0; f < filters_.size(); ++f) {
+    filters_[f]->apply(cloud);
+    for (const auto & [key, value] : filters_[f]->diagnostics()) {
+      diagnostics_.emplace_back(filter_names_[f] + "." + key, value);
+    }
   }
   if (debug_publisher_) {
     std_msgs::msg::Header header = message->header;
@@ -286,7 +299,7 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
         }
       }
     }
-    dropGroundHits(grid, scan, time);
+    prepareRays(grid, scan, time);
     grid.integrate(layer_, scan);
   }
   record(millisecondsSince(start));
@@ -367,7 +380,7 @@ void LaserScanSource::onScan(const sensor_msgs::msg::LaserScan::ConstSharedPtr &
   }
   {
     std::lock_guard<std::mutex> lock(context_.grid->mutex);
-    dropGroundHits(*context_.grid->grid, scan, stamp.seconds());
+    prepareRays(*context_.grid->grid, scan, stamp.seconds());
     context_.grid->grid->integrate(layer_, scan);
   }
   record(millisecondsSince(start));

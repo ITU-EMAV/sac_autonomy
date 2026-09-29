@@ -38,6 +38,7 @@ struct Ray
   /// its end). -inf for rays that are free all along (2D lidar).
   float ground_z = -std::numeric_limits<float>::infinity();
   bool hit = true;            // end is an obstacle (false: free space up to and at end)
+  bool mark = true;           // a hit that is not marked still leaves its end cell alone
 };
 
 struct Scan

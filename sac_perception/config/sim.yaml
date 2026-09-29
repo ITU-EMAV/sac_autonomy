@@ -57,6 +57,10 @@
         # Its plane (0.45 m up) meets the road where it rises ahead: returns within 0.2 m of
         # the ground the roof lidar saw there are road, not obstacles
         ground_margin: 0.2
+        # Beyond 15 m its plane meets rising road where the roof lidar has not seen the ground
+        # yet (its rings are 20.5 and 34 m out); far away the roof lidar sees for both. It
+        # still clears the space before such returns.
+        max_mark_range: 15.0
         ground_search_radius: 1.0
         ground_max_age: 3.0
         hit: 0.8
