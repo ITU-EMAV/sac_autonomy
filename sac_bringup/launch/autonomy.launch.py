@@ -8,6 +8,9 @@ Arguments:
                        (run the simulation with ground_truth_tf:=false)
   perception:=true     also start sac_perception: the local occupancy grid
                        (/sac/perception/grid) from the lidars
+  local_planner:=true  drive around obstacles: sac_local_planner follows the route around
+                       the grid's obstacles (or stops before them) and the controller drives
+                       its trajectory; starts the perception too
   estimator:=, motion_model:=
                        passed to the localization (see sac_localization's launch file)
   site:=sonoma         site config sac_planning/config/<site>.yaml (datum and default route)
@@ -16,6 +19,7 @@ Arguments:
 
   ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true
   ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true localization:=true
+  ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true local_planner:=true
 """
 
 import os
@@ -29,18 +33,42 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def include(package, launch_file, arguments):
+    return IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(get_package_share_directory(package), "launch", launch_file)),
+        launch_arguments=arguments.items(),
+    )
+
+
 def nodes(context):
-    use_sim_time = LaunchConfiguration("use_sim_time").perform(context).lower() == "true"
+    def flag(name):
+        return LaunchConfiguration(name).perform(context).lower() == "true"
+
+    use_sim_time = flag("use_sim_time")
     site = LaunchConfiguration("site").perform(context)
     route = LaunchConfiguration("route").perform(context)
     max_speed = LaunchConfiguration("max_speed").perform(context)
+    local_planner = flag("local_planner")
+    sim_time = "true" if use_sim_time else "false"
 
     site_config = os.path.join(get_package_share_directory("sac_planning"), "config", f"{site}.yaml")
     planner_parameters = [site_config, {"use_sim_time": use_sim_time}]
     if route:
         planner_parameters.append({"route": route})
 
-    return [
+    actions = []
+    if flag("perception") or local_planner:
+        actions.append(include("sac_perception", "perception.launch.py", {"use_sim_time": sim_time}))
+    if local_planner:
+        actions.append(
+            include("sac_local_planner", "local_planner.launch.py", {"use_sim_time": sim_time, "max_speed": max_speed})
+        )
+    controller_parameters = [
+        os.path.join(get_package_share_directory("sac_control"), "config", "pure_pursuit.yaml"),
+        {"use_sim_time": use_sim_time, "input": "trajectory" if local_planner else "path"},
+    ] + ([{"max_speed": float(max_speed)}] if max_speed else [])
+
+    return actions + [
         Node(
             package="sac_planning",
             executable="route_planner",
@@ -57,13 +85,10 @@ def nodes(context):
             executable="pure_pursuit",
             name="pure_pursuit",
             output="screen",
-            parameters=[
-                os.path.join(get_package_share_directory("sac_control"), "config", "pure_pursuit.yaml"),
-                {"use_sim_time": use_sim_time},
-            ]
-            + ([{"max_speed": float(max_speed)}] if max_speed else []),
+            parameters=controller_parameters,
             remappings=[
                 ("path", "/sac/planning/path"),
+                ("trajectory", "/sac/planning/trajectory"),
                 ("cmd_vel", "/sac/actuators/cmd_vel"),
                 ("~/lookahead", "/sac/control/lookahead"),
                 ("~/cross_track_error", "/sac/control/cross_track_error"),
@@ -83,13 +108,7 @@ def generate_launch_description():
             DeclareLaunchArgument("estimator", default_value=""),
             DeclareLaunchArgument("motion_model", default_value=""),
             DeclareLaunchArgument("perception", default_value="false"),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(get_package_share_directory("sac_perception"), "launch", "perception.launch.py")
-                ),
-                launch_arguments={"use_sim_time": LaunchConfiguration("use_sim_time")}.items(),
-                condition=IfCondition(LaunchConfiguration("perception")),
-            ),
+            DeclareLaunchArgument("local_planner", default_value="false"),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(get_package_share_directory("sac_localization"), "launch", "localization.launch.py")

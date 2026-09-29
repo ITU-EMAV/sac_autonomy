@@ -11,8 +11,19 @@ command changes no faster than the acceleration limits.
 Safety: when the car stays further than `max_off_path` from the path for `off_path_time` it
 stops, and stays stopped until a path is published again.
 
+Two inputs (`input` parameter):
+  path        the global route (nav_msgs/Path, latched), driven as it is with the speed
+              profile above
+  trajectory  the local planner's short trajectory with a speed at each point
+              (sac_planning_msgs/Trajectory, a new one every cycle): steering as above,
+              the speed from the trajectory (the lowest over the next `speed_preview` s:
+              it brakes in time for a stop); an older one than `trajectory_timeout` [s] and
+              the car stops
+
 Subscribes:  path     nav_msgs/Path in the map frame (remapped to /sac/planning/path); a loop
                       (last pose next to the first) is driven round and round
+             trajectory  sac_planning_msgs/Trajectory in the map frame (remapped to
+                      /sac/planning/trajectory), with input: trajectory
              TF       map -> base_footprint, from the localization (or the simulation)
 Publishes:   cmd_vel  geometry_msgs/Twist, speed and yaw rate (remapped to
                       /sac/actuators/cmd_vel), only while it has a path and a pose
@@ -56,11 +67,22 @@ class PurePursuit(Node):
         self.map_frame = p("map_frame", "map").value
         self.robot_frame = p("robot_frame", "base_footprint").value
         rate = p("rate", 20.0).value  # [Hz]
+        self.input = p("input", "path").value  # path | trajectory
+        self.trajectory_timeout = p("trajectory_timeout", 0.5).value  # [s]
+        self.speed_preview = p("speed_preview", 0.5).value  # [s]
+        if self.input not in ("path", "trajectory"):
+            raise ValueError("input: path or trajectory")
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        self.create_subscription(Path, "path", self.on_path, latched)
+        self.trajectory = None  # (points (n, 2), speeds (n,), stamp [s])
+        if self.input == "path":
+            self.create_subscription(Path, "path", self.on_path, latched)
+        else:
+            from sac_planning_msgs.msg import Trajectory
+
+            self.create_subscription(Trajectory, "trajectory", self.on_trajectory, 1)
         self.cmd_publisher = self.create_publisher(Twist, "cmd_vel", 10)
         self.lookahead_publisher = self.create_publisher(PointStamped, "~/lookahead", 10)
         self.error_publisher = self.create_publisher(Float64, "~/cross_track_error", 10)
@@ -135,8 +157,22 @@ class PurePursuit(Node):
                 limit[i] = min(limit[i], math.sqrt(following**2 + 2 * self.max_deceleration * spacing))
         return limit
 
+    def on_trajectory(self, msg):
+        if msg.header.frame_id and msg.header.frame_id != self.map_frame:
+            self.get_logger().error(f"Trajectory in '{msg.header.frame_id}', expected '{self.map_frame}'")
+            return
+        if len(msg.points) < 2:
+            return
+        points = np.array([(q.x, q.y) for q in msg.points])
+        speeds = np.array([q.speed for q in msg.points])
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        self.trajectory = (points, speeds, stamp)
+
     # ---------------------------------------------------------------- control
     def tick(self):
+        if self.input == "trajectory":
+            self.follow_trajectory()
+            return
         if self.path is None or self.finished:
             return
         try:
@@ -198,6 +234,87 @@ class PurePursuit(Node):
         self.cmd_publisher.publish(cmd)
         self.driving = True
         self.publish_debug(goal, rear, i)
+
+    def robot_pose(self):
+        """Rear axle position and heading in the map frame, or None."""
+        try:
+            t = self.tf_buffer.lookup_transform(
+                self.map_frame, self.robot_frame, Time(), timeout=Duration(seconds=0.0)
+            ).transform
+        except TransformException as error:
+            self.get_logger().warn(f"No pose: {error}", throttle_duration_sec=2.0)
+            return None
+        q = t.rotation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+        heading = np.array([math.cos(yaw), math.sin(yaw)])
+        return np.array([t.translation.x, t.translation.y]) - heading * self.wheel_base / 2, heading
+
+    def follow_trajectory(self):
+        """The local planner's trajectory: its path and its speeds."""
+        if self.trajectory is None:
+            return
+        points, speeds, stamp = self.trajectory
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if now - stamp > self.trajectory_timeout:
+            self.get_logger().warn(
+                f"Trajectory {now - stamp:.2f} s old: stopping", throttle_duration_sec=2.0
+            )
+            self.stop()
+            return
+        pose = self.robot_pose()
+        if pose is None:
+            self.stop()
+            return
+        rear, heading = pose
+        distances = np.hypot(*(points - rear).T)
+        i = int(np.argmin(distances))
+        if distances[i] > self.max_off_path:
+            if self.off_path_since is None:
+                self.off_path_since = now
+            if now - self.off_path_since >= self.off_path_time:
+                self.get_logger().error(
+                    f"{distances[i]:.1f} m from the trajectory: stopping", throttle_duration_sec=2.0
+                )
+                self.stop()
+                return
+        else:
+            self.off_path_since = None
+
+        # Speed: the lowest ahead within the preview time, within the acceleration limits
+        spacing = max(float(np.median(np.hypot(*np.diff(points, axis=0).T))), 1e-3)
+        preview = int(math.ceil(max(1.0, self.speed * self.speed_preview) / spacing))
+        target = float(np.min(speeds[i : i + preview + 1]))
+        limit_up = self.speed + self.max_acceleration * self.dt
+        limit_down = self.speed - self.max_deceleration * self.dt
+        self.speed = max(0.0, min(max(target, limit_down), limit_up))
+
+        # Steering: the circle through the lookahead point on the trajectory
+        lookahead = min(self.lookahead_max, self.lookahead_min + self.lookahead_gain * self.speed)
+        ahead = np.nonzero(np.hypot(*(points[i:] - rear).T) >= lookahead)[0]
+        goal = points[i + ahead[0]] if len(ahead) else points[-1]
+        d = goal - rear
+        x = d @ heading
+        y = -d[0] * heading[1] + d[1] * heading[0]
+        curvature = 2 * y / max(x * x + y * y, 1e-6)
+        max_curvature = math.tan(self.max_steering) / self.wheel_base
+        curvature = min(max(curvature, -max_curvature), max_curvature)
+
+        cmd = Twist()
+        cmd.linear.x = self.speed
+        cmd.angular.z = self.speed * curvature
+        self.cmd_publisher.publish(cmd)
+        self.driving = True
+
+        point = PointStamped()
+        point.header.frame_id = self.map_frame
+        point.header.stamp = self.get_clock().now().to_msg()
+        point.point.x, point.point.y = float(goal[0]), float(goal[1])
+        self.lookahead_publisher.publish(point)
+        j = min(i + 1, len(points) - 1)
+        a, b = points[j - 1], points[j]
+        tangent = (b - a) / max(np.hypot(*(b - a)), 1e-9)
+        offset = rear - a
+        self.error_publisher.publish(Float64(data=float(tangent[0] * offset[1] - tangent[1] * offset[0])))
 
     def wrap(self, i):
         n = len(self.path)

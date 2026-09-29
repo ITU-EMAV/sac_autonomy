@@ -1,0 +1,17 @@
+<library path="sac_local_planner_plugins">
+  <class name="frenet_lattice" type="sac_local_planner::FrenetLattice" base_class_type="sac_local_planner::TrajectoryGenerator">
+    <description>Quintic lateral shifts from the route in its Frenet frame (offsets x shift lengths)</description>
+  </class>
+  <class name="obstacle_clearance" type="sac_local_planner::ObstacleClearance" base_class_type="sac_local_planner::CostFunction">
+    <description>Coming closer to an obstacle than a desired clearance</description>
+  </class>
+  <class name="offset_from_route" type="sac_local_planner::OffsetFromRoute" base_class_type="sac_local_planner::CostFunction">
+    <description>Being off the route</description>
+  </class>
+  <class name="lateral_acceleration" type="sac_local_planner::LateralAcceleration" base_class_type="sac_local_planner::CostFunction">
+    <description>Sharp swerves: speed squared times the largest curvature</description>
+  </class>
+  <class name="consistency" type="sac_local_planner::Consistency" base_class_type="sac_local_planner::CostFunction">
+    <description>Changing the target offset from the last cycle</description>
+  </class>
+</library>

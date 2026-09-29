@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>sac_local_planner</name>
+  <version>0.1.0</version>
+  <description>
+    The SAC car's local planner: follows the global route around the perception grid's
+    obstacles with candidate paths in the route's Frenet frame, scored by cost functions
+    (plugins); stops before what it cannot pass.
+  </description>
+  <maintainer email="yunus.akdal@gmail.com">Yunus Ahmet AKDAL</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>eigen3_cmake_module</buildtool_depend>
+
+  <depend>eigen</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>pluginlib</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>nav_msgs</depend>
+  <depend>visualization_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>sac_planning_msgs</depend>
+  <depend>sac_perception</depend>
+
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

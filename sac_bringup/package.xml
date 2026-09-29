@@ -15,6 +15,7 @@
   <exec_depend>sac_localization</exec_depend>
   <exec_depend>sac_localization_adapters</exec_depend>
   <exec_depend>sac_perception</exec_depend>
+  <exec_depend>sac_local_planner</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

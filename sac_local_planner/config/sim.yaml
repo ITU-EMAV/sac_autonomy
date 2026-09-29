@@ -1,0 +1,45 @@
+# The local planner in the simulation: candidates around the route, checked against the
+# perception grid. The generator and each cost function are plugins; a cost more is a name
+# more under costs.names.
+/**:
+  ros__parameters:
+    map_frame: map
+    base_frame: base_footprint
+    rate: 10.0                    # [Hz]
+    occupied_threshold: 65        # [%] grid cells from here on are obstacles
+    max_grid_age: 1.0             # [s] older (or no) grid: stop
+
+    generator:
+      type: frenet_lattice
+      max_offset: 3.5             # [m] each side of the route (the route keeps 3 m from the edges)
+      offset_step: 0.5
+      shift_times: [1.5, 2.5, 3.5]  # [s] x speed = lengths of the swerves
+      min_shift_length: 6.0       # [m]
+      horizon_time: 4.0           # [s]
+      min_horizon: 30.0           # [m]
+      step: 0.5
+
+    costs:
+      names: [obstacle_clearance, offset_from_route, lateral_acceleration, consistency]
+      obstacle_clearance:
+        weight: 50.0
+        desired_clearance: 1.0    # [m] beyond the footprint
+      offset_from_route:
+        weight: 1.0
+      lateral_acceleration:
+        weight: 0.1
+        min_speed: 3.0
+      consistency:
+        weight: 0.5           # holds a side around an obstacle; more keeps the car off the route
+
+    footprint:                    # circles along the car covering its 2.7 x 1.66 m body
+      offsets: [-0.9, 0.0, 0.9]   # [m] from base_footprint
+      radius: 0.95
+      safety_margin: 0.3          # [m] closer is a collision
+
+    limits:                       # as sac_control's pure_pursuit.yaml
+      max_speed: 10.0
+      max_lateral_acceleration: 3.0
+      max_acceleration: 2.0
+      max_deceleration: 4.0
+      stop_margin: 3.0            # [m] stop this far before an obstacle

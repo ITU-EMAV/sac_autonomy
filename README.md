@@ -20,7 +20,7 @@ Both workspaces include this repository as a git submodule under `src/`.
 | `sac_localization`, `sac_localization_adapters`, `sac_localization_msgs` | state estimation configured from YAML: any number of sensors, exchangeable engines (`ekf`, `iekf`, `ukf`) and motion models (`constant_acceleration`, `imu_driven`, `kinematic_bicycle`, `dynamic_bicycle`) as plugins; a local (`odom`) and a global (`map`) filter. See [DESIGN.md](sac_localization/DESIGN.md). |
 | `sac_perception` | the local occupancy grid around the car, from any number of sensors set in YAML (3D and 2D lidars, depth cameras, other nodes' grids), with exchangeable ground segmentation and point filters as plugins. See [DESIGN.md](sac_perception/DESIGN.md). |
 
-Planned: a local planner (avoiding the grid's obstacles along the route).
+| `sac_local_planner`, `sac_planning_msgs` | the local planner: follows the route around the grid's obstacles with candidate paths in the route's Frenet frame (generator and cost functions as plugins), stops before what it cannot pass, publishes a trajectory with speeds. See [DESIGN.md](sac_local_planner/DESIGN.md). |
 
 What belongs here: anything that runs from topics alone. Anything that opens a device, a
 serial port or a network socket to hardware belongs in `sac_drivers`; anything Gazebo-specific
@@ -44,7 +44,13 @@ The localization's error against Gazebo is published on `/sac/localization/error
 the viewer's layout).
 With `perception:=true` the local occupancy grid is published on `/sac/perception/grid`; in
 the simulation, obstacles are put on the track with `SIM_LAUNCH_ARGS="obstacles:=beside_route"`
-(gazebo_environment's `config/obstacles/`).
+(gazebo_environment's `config/obstacles/`: `beside_route`, `on_route`, `blocked`).
+With `local_planner:=true` the car drives around obstacles on the route (or stops before a
+closed road): the perception starts too, the local planner publishes a trajectory and the
+controller drives it.
+```bash
+ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true local_planner:=true
+```
 The car drives the site's route (`sac_planning/config/<site>.yaml`, default `site:=sonoma`);
 a loop is driven lap after lap, an open route to its end. Speed limits and the lookahead are
 in `sac_control/config/pure_pursuit.yaml` (10 m/s, 3 m/s^2 in corners by default). Stop it
@@ -102,6 +108,9 @@ these names, types and meanings; a change here is a change in `sac_drivers` and
 |---|---|---|
 | `/sac/planning/path` | `nav_msgs/Path` | the path to follow, in `map`, latched; a pose every ~0.5 m; a loop does not repeat its first pose. Every planning method publishes here. |
 | `/sac/planning/route_geojson` | `foxglove_msgs/GeoJSON` | the route on the world map, for a Map panel |
+| `/sac/planning/trajectory` | `sac_planning_msgs/Trajectory` | the local planner's trajectory in `map`, 10 Hz: points every 0.5 m with a speed each; `stopping` when there is no way past |
+| `/sac/planning/candidates` | `visualization_msgs/MarkerArray` | the candidates (free green, blocked red, the chosen one blue) |
+| `/sac/planning/timing` | `diagnostic_msgs/DiagnosticArray` | planning time, free candidates, the chosen offset, the costs |
 | `/sac/perception/grid` | `nav_msgs/OccupancyGrid` | the local occupancy grid in `odom`, 80 x 80 m around the car, 20 Hz: -1 unknown, 0-100 occupancy |
 | `/sac/perception/timing` | `diagnostic_msgs/DiagnosticArray` | processing time per sensor source and of the grid step [ms] |
 | `/sac/control/lookahead` | `geometry_msgs/PointStamped` | the point the controller steers to |
