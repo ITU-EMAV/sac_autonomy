@@ -76,6 +76,10 @@ void GroundPatchwork::initialize(const Params & params)
   const int rings = num_rings_each_zone_[0] + num_rings_each_zone_[1] + num_rings_each_zone_[2] + num_rings_each_zone_[3];
   num_rings_of_interest_ = std::clamp(num_rings_of_interest_, 0, rings);
   enable_agle_ = params.getBool("enable_AGLE", enable_agle_);
+  enable_grade_check_ = params.getBool("enable_grade_check", enable_grade_check_);
+  max_grade_ = params.getDouble("max_grade", max_grade_);
+  grade_margin_ = params.getDouble("grade_margin", grade_margin_);
+  lpr_ground_tolerance_ = params.getDouble("lpr_ground_tolerance", lpr_ground_tolerance_);
   elevation_thr_ = params.getDoubles("elevation_thr", std::vector<double>(num_rings_of_interest_, 0.0));
   flatness_thr_ = params.getDoubles("flatness_thr", std::vector<double>(num_rings_of_interest_, 0.0));
   if (static_cast<int>(elevation_thr_.size()) != num_rings_of_interest_ ||
@@ -296,12 +300,20 @@ void GroundPatchwork::apply(Cloud & cloud)
           plane.singular_values(0) / plane.singular_values(1) : std::numeric_limits<double>::infinity();
         const bool is_not_elevated = is_near_zone && elevation < elevation_thr_[concentric];
         const bool is_flat = is_near_zone && flatness < flatness_thr_[concentric];
-        if (is_upright && is_not_elevated && is_near_zone) {
+        const bool reachable_here = !enable_grade_check_ ||
+          std::abs(elevation + sensor_height_) <= grade_margin_ + max_grade_ * std::hypot(plane.mean.x(), plane.mean.y());
+        if (is_upright && is_not_elevated && is_near_zone && reachable_here) {
           update_elevation_[concentric].push_back(elevation);
           update_flatness_[concentric].push_back(flatness);
         }
+        // Not in Patchwork++ (reachable_here above): a plane the car could not reach from its
+        // own ground (a bridge deck, a roof seen from below) is not ground, near or far. Each
+        // bin is held against the sensor only, so one bad bin cannot pass its error on.
         bool accepted = false;
-        if (!is_upright) {
+        if (!reachable_here) {
+          statistics_.out_of_grade += bin.size();
+          accepted = false;
+        } else if (!is_upright) {
           statistics_.not_upright += bin.size();
           accepted = false;
         } else if (!is_near_zone) {
@@ -404,7 +416,7 @@ void GroundPatchwork::apply(Cloud & cloud)
         }
         for (int k : bin) {
           double height = groundHeight(plane, q[k].x(), q[k].y());
-          if (std::isfinite(lpr) && std::abs(lpr - height) < 0.5) {
+          if (std::isfinite(lpr) && std::abs(lpr - height) < lpr_ground_tolerance_) {
             height = lpr;
           }
           cloud.ground_z[k] = static_cast<float>(origin.z() + height);
@@ -437,6 +449,7 @@ std::vector<std::pair<std::string, double>> GroundPatchwork::diagnostics() const
     {"not_ground_elevated", static_cast<double>(statistics_.elevated)},
     {"off_plane", static_cast<double>(statistics_.off_plane)},
     {"reverted", static_cast<double>(statistics_.reverted)},
+    {"not_ground_out_of_grade", static_cast<double>(statistics_.out_of_grade)},
     {"sensor_height", sensor_height_}};
   for (std::size_t i = 0; i < elevation_thr_.size(); ++i) {
     d.emplace_back("elevation_thr_" + std::to_string(i), elevation_thr_[i]);

@@ -38,6 +38,12 @@
           enable_RVPF: true       # vertical structures out first (zone 0)
           enable_TGR: true        # flat enough rejected bins back to ground
           enable_AGLE: true       # learn the thresholds from the ground seen
+          # Not in Patchwork++: a plane the car cannot reach is not ground (a bridge deck 8 m
+          # over the road passed as ground far out, and its railings as obstacles)
+          enable_grade_check: true
+          max_grade: 0.2          # [m/m] from the ground under the sensor
+          grade_margin: 0.5       # [m]
+          lpr_ground_tolerance: 1.0  # [m] a non-ground bin's lowest points as its ground height
         band:
           type: height_band
           min: 0.25               # [m] over the ground: kerbs and bumps are drivable

@@ -50,6 +50,25 @@ them into short pieces per bin, and Patchwork++ does not take bins with fewer th
 uphill, crest, car pitched 2 deg, a box 18 m ahead) find over 99 % of the ground and over
 95 % of the box.
 
+**Additions to Patchwork++** (each switchable in the YAML), both found at the bridge over
+the Sonoma track, where the local planner saw no way through for 5 s:
+- `enable_grade_check`: Patchwork++ checks a bin's height only in the rings of interest near
+  the sensor; further out any upright plane is ground, and the flat deck 8 m over the road,
+  25-30 m ahead, was: its railings then stood 1-2 m "over the ground" as obstacles, and the
+  deck went into the shared ground map. A plane further than 0.5 m + 20 % of its range from
+  the ground under the sensor is not ground. Each bin is held against the sensor alone, not
+  against its neighbour, so an error cannot carry on outwards (the first attempt's failure).
+- `lpr_ground_tolerance` 1.0 m instead of 0.5: under the bridge the road rises 0.5 m within
+  a few metres, and the ground height of a rejected bin fell back to a plane from nearer
+  the sensor, leaving the road 0.54 m "high": a line of obstacles across the lane.
+Unit test: a deck 8 m up with 1 m railings, the VLP-16's 16 channels: no deck point is
+ground or an obstacle, over 99 % of the road is ground. In the simulation the local
+planner's cycles with no free candidate went from 54 in one pass under the bridge to 9 in
+4.8 km, all on the approach to the bridge: the grade window grows with the range, so the
+deck (8 m up) is rejected only within 37.5 m, and the planner looks 40 m ahead. A tighter
+max_grade (0.15: 50 m) would also reject real ground far out where a descent turns into a
+climb, so it stays 0.2.
+
 A first attempt (a plane per bin, each checked against the nearer bin's) failed on the
 VLP-16: a bin holding a single ring is a line, a plane through a line tilts freely, and the
 check carried one tilted plane outwards: the flat road 20 m ahead came out 0.7 m above the

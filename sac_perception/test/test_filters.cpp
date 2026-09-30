@@ -233,6 +233,70 @@ TEST(GroundPatchwork, AWallNearTheCarIsNotGround)
   }
 }
 
+TEST(GroundPatchwork, ABridgeOverTheRoadIsNeitherGroundNorAnObstacle)
+{
+  // The simulation's failure: a bridge deck 8 m over a flat road, 25-30 m ahead, 20 m wide
+  // with 1 m railings; the roof VLP-16's 16 channels. Far out Patchwork++ took the flat
+  // deck for ground and its railings for obstacles standing on it.
+  const Eigen::Vector3f origin(-0.45f, 0.0f, 1.79f);
+  auto deck = [](const Eigen::Vector3f & p) {
+    return p.x() > 25.0f && p.x() < 30.0f && std::abs(p.y()) < 10.0f &&
+           ((p.z() > 8.0f && p.z() < 8.5f) ||                                           // the deck
+            (p.z() >= 8.5f && p.z() < 9.5f && (p.x() < 25.3f || p.x() > 29.7f)));      // railings
+  };
+  std::mt19937 random(5);
+  std::normal_distribution<float> noise(0.0f, 0.015f);
+  std::vector<Eigen::Vector3f> points;
+  std::vector<bool> on_deck;
+  for (int channel = -15; channel <= 15; channel += 2) {
+    const float elevation = channel * 3.14159265f / 180.0f;
+    for (float azimuth = 0.0f; azimuth < 360.0f; azimuth += 0.4f) {
+      const float a = azimuth * 3.14159265f / 180.0f;
+      const Eigen::Vector3f direction(
+        std::cos(elevation) * std::cos(a), std::cos(elevation) * std::sin(a), std::sin(elevation));
+      for (float r = 1.0f; r < 60.0f; r += 0.05f) {
+        const Eigen::Vector3f p = origin + r * direction;
+        if (p.z() <= 0.0f || deck(p)) {
+          points.push_back(origin + (r + noise(random)) * direction);
+          on_deck.push_back(p.z() > 1.0f);
+          break;
+        }
+      }
+    }
+  }
+  GroundPatchwork f = patchwork();
+  HeightBand band;
+  MapParams none;
+  band.initialize(none);
+  Cloud cloud;
+  for (int scan = 0; scan < 3; ++scan) {
+    cloud.resize(points.size());
+    cloud.points = points;
+    cloud.origin = origin;
+    f.apply(cloud);
+    band.apply(cloud);
+  }
+  std::size_t deck_points = 0;
+  std::size_t deck_ground = 0;
+  std::size_t deck_obstacle = 0;
+  std::size_t road = 0;
+  std::size_t road_ground = 0;
+  for (std::size_t k = 0; k < cloud.size(); ++k) {
+    if (on_deck[k]) {
+      ++deck_points;
+      deck_ground += cloud.labels[k] == Cloud::kGround;
+      deck_obstacle += cloud.labels[k] == Cloud::kObstacle;
+    } else {
+      ++road;
+      road_ground += cloud.labels[k] == Cloud::kGround;
+    }
+  }
+  ASSERT_GT(deck_points, 50u);
+  EXPECT_EQ(deck_ground, 0u);    // the deck is not the ground
+  EXPECT_EQ(deck_obstacle, 0u);  // nor anything on it an obstacle: all too high to matter
+  EXPECT_GT(static_cast<double>(road_ground) / road, 0.99);
+}
+
 TEST(GroundHeight, IsOnlyForFlatGround)
 {
   GroundHeight f;

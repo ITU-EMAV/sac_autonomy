@@ -53,6 +53,11 @@ line or up to 1.5 m off it), 5.4 km (1.7 laps):
 | planning | 0.85 ms mean, 6 ms max (45 candidates); distance map 2 ms |
 | cycles with no free candidate | 10 of 5968 (brief, the car did not stop) |
 
+The cycles with no free candidate came from a bridge over the track: its deck 8 m up passed
+as ground far out in the ground filter and its railings as obstacles in the lane (see
+sac_perception's DESIGN.md). With that fixed, 4.8 km: 9 of 7200 cycles, all 37-40 m before
+the bridge, no stop, no collision, the obstacles passed at 0.72-1.30 m.
+
 With the consistency weight at 2 the car kept a 0.5 m offset after an obstacle (changing
 the target cost more than the offset); at 0.5 it goes back to the route and still keeps its
 side around an obstacle.

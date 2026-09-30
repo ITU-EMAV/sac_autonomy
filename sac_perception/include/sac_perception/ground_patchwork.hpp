@@ -25,7 +25,7 @@
 //
 // Additions for the grid: every point gets the height of the ground under it: its bin's
 // plane; in a bin that is not ground, the mean of its lowest points (the road beside an
-// object) if it agrees within 0.5 m with the nearest ground bin's plane on the way to the
+// object) if it agrees within lpr_ground_tolerance with the nearest ground bin's plane on the way to the
 // sensor, else that plane; else the sensor's height below it. The sensor's height starts
 // from the cloud's origin (TF), not a parameter.
 //
@@ -42,6 +42,15 @@
 //   enable_RNR true, RNR_ver_angle_thr -15 [deg], RNR_intensity_thr 0.2
 // and enable_AGLE (true; not in Patchwork++, where it is always on): off, the thresholds stay
 // at their initial elevation_thr / flatness_thr (and sensor_height, if given).
+//
+// Additions, not in Patchwork++ (found driving the simulation):
+//   enable_grade_check (true), max_grade (0.2), grade_margin [m] (0.5): Patchwork++ checks a
+//     bin's height only near the sensor (the rings of interest); further out a flat bridge
+//     deck 8 m over the road passes as ground, its railings then look like obstacles over
+//     it. A plane further than grade_margin + max_grade x range from the ground under the
+//     sensor is not ground. Held against the sensor alone, so no error carries on.
+//   lpr_ground_tolerance [m] (1.0): see the ground height below; a road that rises 0.5 m
+//     under a bridge needed more than the 0.5 first used.
 //   elevation_thr, flatness_thr: initial thresholds per ring of interest (Patchwork++: 0)
 
 #pragma once
@@ -73,6 +82,7 @@ public:
     std::size_t elevated = 0;      // elevated and not flat, not reverted by TGR
     std::size_t off_plane = 0;     // in a ground bin but off its plane
     std::size_t reverted = 0;      // points of bins TGR made ground
+    std::size_t out_of_grade = 0;  // a plane the car could not reach (bridge deck)
   };
   const Statistics & statistics() const { return statistics_; }
   /// The statistics and the learnt thresholds of the last scan
@@ -140,6 +150,10 @@ private:
   std::vector<std::deque<double>> update_elevation_;
   std::vector<std::deque<double>> update_flatness_;
   bool enable_agle_ = true;
+  bool enable_grade_check_ = true;
+  double max_grade_ = 0.2;
+  double grade_margin_ = 0.5;
+  double lpr_ground_tolerance_ = 1.0;
   Statistics statistics_;
 
   // Kept between scans so that a scan allocates nothing: the bins and scratch space
