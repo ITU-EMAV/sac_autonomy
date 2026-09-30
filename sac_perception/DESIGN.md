@@ -96,6 +96,52 @@ the band runs 0.25..2.13 m. A branch hanging down to 1.9 m is an obstacle, a sig
 not; another car or a sensor moved higher needs no change in the YAML. `max_from: sensor`
 takes the sensor's height instead, `fixed` the number.
 
+## sparse_voxel: the obstacles in 3D
+`map.type: sparse_voxel` (launch `map:=sparse_voxel`, or `perception_map:=` of sac_bringup)
+keeps the sources' obstacle points in voxels (0.2 m) instead of each source's 2D layer, and
+decides per column, over time, what the car cannot pass (`traversability.hpp`, the same rules
+for any 3D representation):
+- the column's ground: the lowest level seen there (the ground map keeps a height more than
+  `level_gap` (1 m) over the one it holds as another level: a deck does not replace the road
+  under it), else a neighbour's within 1 m, else the ground filter's estimate under the point
+- an obstacle between ground + `min_obstacle_height` (0.25 m) and the car's height +
+  `clearance` (2.13 m): what is over the car is kept but not in the way, and a ceiling lower
+  than the car closes the way (a tunnel 1.8 m high is closed, one 3 m high is not: unit test)
+- `max_step` (off): the ground rising or falling more than this to the next cell
+- each voxel keeps its lowest and highest point, so the band's edges are not rounded to voxels
+Stored sparse in height and dense over the ground (each cell of the window holds the few
+voxels of its column), so a ray is traced in 2D as before and lowers the voxels it passes at
+the height it runs there. The roof lidar's chain has no height_band for it: the map keeps
+what is over the car too.
+
+Two modes (`map.memory`):
+- `true`: what was seen stays until rays pass through it or it fades
+- `false`: each source's voxels are its last scan (or its scans of the last `window` [s]),
+  rebuilt with every scan, no rays traced
+
+`/sac/perception/map` (`publish_map`) shows what a representation holds, for any of them:
+voxels (or direct_projection's occupied cells at their ground), with `blocks` 1 for what is in
+the grid and 0 for what is kept but not in the way.
+
+Without the simulation (unit test Benchmark, the same VLP-16 scan): into the map and ground
+map direct_projection 2.0 ms, sparse_voxel 9.6 ms (every ray traced from the sensor, not only
+its low end), without memory 1.1 ms; decaying and projecting 0.4 / 1.8 / 1.6 ms.
+
+The same lap as above (obstacles beside the route, 4.4-4.6 km each):
+
+| Map | Grids with a false obstacle in the lane | False cells per grid | Small obstacles first seen | Roof lidar per scan |
+|---|---|---|---|---|
+| direct_projection | 1.4 % | 0.03 | 16-23 m | 11.9 ms |
+| sparse_voxel, memory | 1.1 % | 0.13 | 13-29 m | 36.8 ms |
+| sparse_voxel, no memory | **0.2 %** | 0.02 | 8-16 m | 10.1 ms |
+
+All ten obstacles were seen each time, their cells within 0.25 m of their footprints. Without
+memory a small obstacle shows only in scans that hit it: a 16-beam lidar misses a cone
+between its rings, so it is seen late (8 m); with memory it is kept, and seen from 13-29 m.
+Memory costs: every ray traced in 3D, 3-4 times the time of direct_projection with Gazebo on
+the same CPU. Most of its false cells are at one place, (-8, -117) to (4, -105), where the
+memoryless map has its worst too; not looked into yet. direct_projection stays the default.
+
 ## The shared ground map
 Sources that find the ground write its height into the grid (`provides_ground`); sources that
 cannot tell the ground from an obstacle read it (`ground_margin`): the front 2D lidar's plane

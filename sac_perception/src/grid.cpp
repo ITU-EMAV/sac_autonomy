@@ -29,6 +29,9 @@ void RollingGrid::setGround(double x, double y, float z, double time)
   int j = 0;
   if (cell(x, y, i, j)) {
     const int k = index(i, j);
+    if (!std::isnan(ground_z_[k]) && z > ground_z_[k] + ground_gap_ && time - ground_time_[k] <= ground_hold_) {
+      return;  // a level over the one held
+    }
     ground_z_[k] = z;
     ground_time_[k] = time;
   }
@@ -248,6 +251,11 @@ void RollingGrid::decay(double dt)
       c *= factor;
     }
   }
+}
+
+int8_t logOddsToPercent(float log_odds)
+{
+  return static_cast<int8_t>(std::lround(100.0f / (1.0f + std::exp(-std::clamp(log_odds, -10.0f, 10.0f)))));
 }
 
 std::vector<int8_t> RollingGrid::combined() const

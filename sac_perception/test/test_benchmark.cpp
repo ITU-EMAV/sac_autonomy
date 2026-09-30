@@ -12,6 +12,8 @@
 #include "sac_perception/filters.hpp"
 #include "sac_perception/ground_patchwork.hpp"
 #include "sac_perception/grid.hpp"
+#include "sac_perception/map_representation.hpp"
+#include "sac_perception/sparse_voxel.hpp"
 
 using namespace sac_perception;
 
@@ -148,4 +150,44 @@ TEST(Benchmark, RoofLidarChain)
   std::printf(
     "BENCHMARK grid: integrate %zu rays %.2f ms, combine %.2f ms\n", rays.rays.size(), t_integrate / repeats,
     t_combine / repeats);
+
+  // The map representations, through their interface: a scan in, the grid out
+  VehicleBox car;
+  car.min = Eigen::Vector3f(-1.4f, -1.0f, 0.0f);
+  car.max = Eigen::Vector3f(1.45f, 1.0f, 1.83f);
+  car.known = true;
+  GridGeometry geometry;
+  auto timeMap = [&](MapRepresentation & map, const char * name) {
+    map.initialize(none, geometry, car);
+    const int source = map.addSource("roof", LayerParams{});
+    map.recenter(0.0, 0.0);
+    double t_insert = 0.0;
+    double t_project = 0.0;
+    for (int i = 0; i < repeats; ++i) {
+      rays.time = 0.1 * i;
+      const auto start = std::chrono::steady_clock::now();
+      for (std::size_t k = 0; k < filtered.size(); ++k) {
+        if (filtered.labels[k] == Cloud::kGround) {
+          map.setGround(filtered.points[k].x(), filtered.points[k].y(), filtered.points[k].z(), rays.time);
+        }
+      }
+      map.insert(source, rays);
+      const auto middle = std::chrono::steady_clock::now();
+      map.decay(0.1);
+      const auto data = map.project();
+      t_insert += std::chrono::duration<double, std::milli>(middle - start).count();
+      t_project += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - middle).count();
+      EXPECT_EQ(data.size(), 400u * 400u);
+    }
+    std::printf(
+      "BENCHMARK %s: ground and insert %.2f ms, decay and project %.2f ms\n", name, t_insert / repeats,
+      t_project / repeats);
+  };
+  DirectProjection direct;
+  timeMap(direct, "direct_projection");
+  SparseVoxel sparse;
+  timeMap(sparse, "sparse_voxel");
+  none.doubles["memory"] = 0.0;
+  SparseVoxel memoryless;
+  timeMap(memoryless, "sparse_voxel memory: false");
 }

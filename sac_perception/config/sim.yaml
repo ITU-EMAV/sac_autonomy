@@ -12,6 +12,8 @@
     rate: 20.0                    # [Hz]
     map:
       type: direct_projection     # each source's rays straight into its own 2D layer
+    publish_map: true             # what the map holds on /sac/perception/map, to look at
+    publish_map_rate: 5.0         # [Hz]
     vehicle:
       from: robot_description     # the car's box from its URDF: the filters below follow it
 

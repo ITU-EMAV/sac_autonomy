@@ -1,0 +1,19 @@
+# Over sim.yaml (perception.launch.py map:=sparse_voxel): the sensors' obstacle points kept in
+# 3D voxels, the band applied per column over time (sparse_voxel.hpp, traversability.hpp)
+/**:
+  ros__parameters:
+    map:
+      type: sparse_voxel
+      memory: true                # false: each sensor's last scan (or `window` [s]) only
+      window: 0.0
+      voxel_height: 0.2           # [m]; across, the grid's resolution
+      min_obstacle_height: 0.25   # [m] over the column's ground: kerbs and bumps are drivable
+      max_from: vehicle           # up to the car's height + clearance: over it is overhead
+      clearance: 0.3              # [m]
+      max_step: -1.0              # [m] the ground rising or falling to a neighbour (off)
+      level_gap: 1.0              # [m] a ground this far over a column's is another level
+      ground_search_radius: 1.0   # [m] a column without ground takes a neighbour's
+      ground_max_age: 3.0         # [s]
+    sources:
+      roof_lidar:
+        filters: [self, ground]   # no height_band: the map keeps what is over the car too

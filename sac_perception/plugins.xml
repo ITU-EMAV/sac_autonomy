@@ -26,4 +26,7 @@
   <class name="direct_projection" type="sac_perception::DirectProjection" base_class_type="sac_perception::MapRepresentation">
     <description>Each source's rays straight into its own 2D layer (the grid of Stage 1)</description>
   </class>
+  <class name="sparse_voxel" type="sac_perception::SparseVoxel" base_class_type="sac_perception::MapRepresentation">
+    <description>Obstacle points kept in 3D voxels, projected by the traversability rules</description>
+  </class>
 </library>

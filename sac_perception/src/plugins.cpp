@@ -6,6 +6,7 @@
 #include "sac_perception/ground_patchwork.hpp"
 #include "sac_perception/map_representation.hpp"
 #include "sac_perception/sources.hpp"
+#include "sac_perception/sparse_voxel.hpp"
 
 PLUGINLIB_EXPORT_CLASS(sac_perception::CropBox, sac_perception::PointFilter)
 PLUGINLIB_EXPORT_CLASS(sac_perception::GroundHeight, sac_perception::PointFilter)
@@ -16,3 +17,4 @@ PLUGINLIB_EXPORT_CLASS(sac_perception::PointCloudSource, sac_perception::GridSou
 PLUGINLIB_EXPORT_CLASS(sac_perception::LaserScanSource, sac_perception::GridSource)
 PLUGINLIB_EXPORT_CLASS(sac_perception::OccupancyGridSource, sac_perception::GridSource)
 PLUGINLIB_EXPORT_CLASS(sac_perception::DirectProjection, sac_perception::MapRepresentation)
+PLUGINLIB_EXPORT_CLASS(sac_perception::SparseVoxel, sac_perception::MapRepresentation)

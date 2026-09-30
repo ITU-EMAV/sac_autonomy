@@ -8,6 +8,8 @@ Arguments:
                        (run the simulation with ground_truth_tf:=false)
   perception:=true     also start sac_perception: the local occupancy grid
                        (/sac/perception/grid) from the lidars
+  perception_map:=sparse_voxel
+                       the perception's map representation (default: direct_projection)
   local_planner:=true  drive around obstacles: sac_local_planner follows the route around
                        the grid's obstacles (or stops before them) and the controller drives
                        its trajectory; starts the perception too
@@ -58,7 +60,13 @@ def nodes(context):
 
     actions = []
     if flag("perception") or local_planner:
-        actions.append(include("sac_perception", "perception.launch.py", {"use_sim_time": sim_time}))
+        actions.append(
+            include(
+                "sac_perception",
+                "perception.launch.py",
+                {"use_sim_time": sim_time, "map": LaunchConfiguration("perception_map").perform(context)},
+            )
+        )
     if local_planner:
         actions.append(
             include("sac_local_planner", "local_planner.launch.py", {"use_sim_time": sim_time, "max_speed": max_speed})
@@ -109,6 +117,7 @@ def generate_launch_description():
             DeclareLaunchArgument("motion_model", default_value=""),
             DeclareLaunchArgument("perception", default_value="false"),
             DeclareLaunchArgument("local_planner", default_value="false"),
+            DeclareLaunchArgument("perception_map", default_value=""),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(get_package_share_directory("sac_localization"), "launch", "localization.launch.py")

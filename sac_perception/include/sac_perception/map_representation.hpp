@@ -28,6 +28,15 @@
 namespace sac_perception
 {
 
+/// An element of the map, to look at (~/map)
+struct MapPoint
+{
+  Eigen::Vector3f position;  // grid frame
+  float occupancy;           // [%]
+  uint8_t blocks;            // 1: in the grid the planner reads, 0: kept but not in the way
+  uint8_t source;            // the source that saw it last
+};
+
 /// The published window
 struct GridGeometry
 {
@@ -71,6 +80,9 @@ public:
   /// corner): -1 unknown, 0..100 occupancy probability
   virtual std::vector<int8_t> project() const = 0;
 
+  /// What the map holds, as points (a voxel's centre, a cell's at its ground)
+  virtual void points(std::vector<MapPoint> & out) const { out.clear(); }
+
   /// Numbers for tuning, published with the timing
   virtual std::vector<std::pair<std::string, double>> diagnostics() const { return {}; }
 };
@@ -103,6 +115,8 @@ public:
   double originX() const override { return grid_->originX(); }
   double originY() const override { return grid_->originY(); }
   std::vector<int8_t> project() const override { return grid_->combined(); }
+  /// The occupied cells, at the ground known near them (1 m)
+  void points(std::vector<MapPoint> & out) const override;
 
   const RollingGrid & grid() const { return *grid_; }
 

@@ -15,9 +15,14 @@
 //       box                vehicle.box: [min x, y, z, max x, y, z] in base_frame
 //       none               (default) unknown
 //   sources.names: [...] and each source's parameters under sources.<name>.
+//   publish_map (false), publish_map_rate [Hz] (5): what the map holds on ~/map
 // Publishes:
 //   ~/grid     nav_msgs/OccupancyGrid in grid_frame, all layers combined (remapped to
 //              /sac/perception/grid)
+//   ~/map      sensor_msgs/PointCloud2 in grid_frame (with publish_map): the map's elements
+//              (voxels, or occupied cells at their ground), fields x, y, z, occupancy [%],
+//              blocks (1: in the grid, 0: kept but not in the way, e.g. over the car),
+//              source (index in sources.names)
 //   ~/timing   diagnostic_msgs/DiagnosticArray: per source the processing time [ms] (last,
 //              mean, max) and skipped messages, and the grid step's time with the map's
 //              numbers
@@ -30,6 +35,7 @@
 
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -52,6 +58,7 @@ private:
   /// The map and the sources, once the car's box is known
   void start(const VehicleBox & vehicle);
   void tick();
+  void publishMap(const rclcpp::Time & stamp);
 
   RosParams root_;
   std::string grid_frame_;
@@ -68,6 +75,10 @@ private:
   std::vector<std::shared_ptr<GridSource>> sources_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr grid_publisher_;
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr timing_publisher_;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr map_publisher_;
+  double map_period_ = 0.2;  // [s]
+  rclcpp::Time last_map_;
+  std::vector<MapPoint> map_points_;
   rclcpp::TimerBase::SharedPtr timer_;
   rclcpp::Time last_tick_;
   bool ticked_ = false;

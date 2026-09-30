@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include <rclcpp_components/register_node_macro.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <tf2/exceptions.h>
 
 #include "sac_perception/robot_geometry.hpp"
@@ -45,6 +46,10 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   grid_publisher_ = create_publisher<nav_msgs::msg::OccupancyGrid>("~/grid", rclcpp::QoS(1));
   timing_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("~/timing", rclcpp::QoS(1));
+  if (root_.getBool("publish_map", false)) {
+    map_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("~/map", rclcpp::QoS(1));
+    map_period_ = 1.0 / root_.getDouble("publish_map_rate", 5.0);
+  }
 
   const std::string from = root_.getString("vehicle.from", "none");
   if (from == "robot_description") {
@@ -172,6 +177,10 @@ void PerceptionNode::tick()
   message.header.frame_id = grid_frame_;
   message.info.map_load_time = message.header.stamp;
   grid_publisher_->publish(message);
+  if (map_publisher_ && (last_map_.nanoseconds() == 0 || (now - last_map_).seconds() >= map_period_ - 1e-3)) {
+    last_map_ = now;
+    publishMap(message.header.stamp);
+  }
   const double grid_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
   grid_ms_max_ = std::max(grid_ms_max_, grid_ms);
 
@@ -198,6 +207,35 @@ void PerceptionNode::tick()
     timing.status.push_back(status);
   }
   timing_publisher_->publish(timing);
+}
+
+void PerceptionNode::publishMap(const rclcpp::Time & stamp)
+{
+  {
+    std::lock_guard<std::mutex> lock(map_.mutex);
+    map_.map->points(map_points_);
+  }
+  sensor_msgs::msg::PointCloud2 cloud;
+  cloud.header.stamp = stamp;
+  cloud.header.frame_id = grid_frame_;
+  sensor_msgs::PointCloud2Modifier modifier(cloud);
+  modifier.setPointCloud2Fields(
+    6, "x", 1, sensor_msgs::msg::PointField::FLOAT32, "y", 1, sensor_msgs::msg::PointField::FLOAT32, "z", 1,
+    sensor_msgs::msg::PointField::FLOAT32, "occupancy", 1, sensor_msgs::msg::PointField::FLOAT32, "blocks", 1,
+    sensor_msgs::msg::PointField::FLOAT32, "source", 1, sensor_msgs::msg::PointField::FLOAT32);
+  modifier.resize(map_points_.size());
+  sensor_msgs::PointCloud2Iterator<float> x(cloud, "x"), y(cloud, "y"), z(cloud, "z"), occupancy(cloud, "occupancy"),
+  blocks(cloud, "blocks"), source(cloud, "source");
+  for (const MapPoint & p : map_points_) {
+    *x = p.position.x();
+    *y = p.position.y();
+    *z = p.position.z();
+    *occupancy = p.occupancy;
+    *blocks = p.blocks;
+    *source = p.source;
+    ++x, ++y, ++z, ++occupancy, ++blocks, ++source;
+  }
+  map_publisher_->publish(cloud);
 }
 
 }  // namespace sac_perception

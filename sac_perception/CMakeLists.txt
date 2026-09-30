@@ -29,7 +29,7 @@ find_package(ament_index_cpp REQUIRED)
 
 # Core: grid and filters, no ROS
 add_library(sac_perception_core SHARED src/grid.cpp src/filters.cpp src/ground_patchwork.cpp
-  src/map_representation.cpp)
+  src/map_representation.cpp src/sparse_voxel.cpp)
 target_include_directories(sac_perception_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -70,7 +70,8 @@ install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_perception test/test_grid.cpp test/test_filters.cpp test/test_benchmark.cpp)
+  ament_add_gtest(test_perception test/test_grid.cpp test/test_filters.cpp test/test_benchmark.cpp
+    test/test_sparse_voxel.cpp)
   target_link_libraries(test_perception sac_perception_core)
   ament_add_gtest(test_robot_geometry test/test_robot_geometry.cpp)
   target_link_libraries(test_robot_geometry sac_perception_ros)

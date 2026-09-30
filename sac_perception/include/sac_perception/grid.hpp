@@ -90,6 +90,14 @@ public:
   /// write it, sources that cannot tell the ground from an obstacle (a 2D lidar, whose plane
   /// meets a road rising ahead) read it. Heights in the grid frame, with when they were seen.
   void setGround(double x, double y, float z, double time);
+  /// With several levels (a road under a bridge): a height more than `gap` [m] over the one a
+  /// cell holds, seen within `max_age` [s], is another level and does not replace it (off:
+  /// the latest height wins)
+  void setGroundLevels(float gap, double max_age)
+  {
+    ground_gap_ = gap;
+    ground_hold_ = max_age;
+  }
   /// The ground height of the nearest cell within `radius` [m] of (x, y) seen within
   /// `max_age` [s] before `time`; false if there is none
   bool groundNear(double x, double y, double radius, double time, double max_age, float & z) const;
@@ -120,7 +128,12 @@ private:
   uint32_t scan_counter_ = 0;
   std::vector<float> ground_z_;      // NaN: never seen
   std::vector<double> ground_time_;  // [s] when
+  float ground_gap_ = std::numeric_limits<float>::infinity();
+  double ground_hold_ = 0.0;
 };
+
+/// Log-odds as an occupancy percentage (0..100), as in nav_msgs/OccupancyGrid
+int8_t logOddsToPercent(float log_odds);
 
 /// Euclidean distance [m] from each cell to the nearest occupied cell (exact, Felzenszwalb &
 /// Huttenlocher's two-pass squared distance transform; linear in the cells). Far from any
