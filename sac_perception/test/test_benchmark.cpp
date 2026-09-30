@@ -13,6 +13,7 @@
 #include "sac_perception/ground_patchwork.hpp"
 #include "sac_perception/grid.hpp"
 #include "sac_perception/map_representation.hpp"
+#include "sac_perception/multi_level_surface.hpp"
 #include "sac_perception/sparse_voxel.hpp"
 
 using namespace sac_perception;
@@ -190,4 +191,10 @@ TEST(Benchmark, RoofLidarChain)
   none.doubles["memory"] = 0.0;
   SparseVoxel memoryless;
   timeMap(memoryless, "sparse_voxel memory: false");
+  none.doubles["memory"] = 1.0;
+  MultiLevelSurface levels;
+  timeMap(levels, "multi_level_surface");
+  none.doubles["memory"] = 0.0;
+  MultiLevelSurface levels_memoryless;
+  timeMap(levels_memoryless, "multi_level_surface memory: false");
 }

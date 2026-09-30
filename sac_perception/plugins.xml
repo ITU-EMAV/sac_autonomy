@@ -29,4 +29,7 @@
   <class name="sparse_voxel" type="sac_perception::SparseVoxel" base_class_type="sac_perception::MapRepresentation">
     <description>Obstacle points kept in 3D voxels, projected by the traversability rules</description>
   </class>
+  <class name="multi_level_surface" type="sac_perception::MultiLevelSurface" base_class_type="sac_perception::MapRepresentation">
+    <description>Obstacle points kept as height intervals per cell, projected by the traversability rules</description>
+  </class>
 </library>

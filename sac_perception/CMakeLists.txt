@@ -29,7 +29,8 @@ find_package(ament_index_cpp REQUIRED)
 
 # Core: grid and filters, no ROS
 add_library(sac_perception_core SHARED src/grid.cpp src/filters.cpp src/ground_patchwork.cpp
-  src/map_representation.cpp src/sparse_voxel.cpp)
+  src/map_representation.cpp src/column_map.cpp src/sparse_voxel.cpp
+  src/multi_level_surface.cpp)
 target_include_directories(sac_perception_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)

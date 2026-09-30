@@ -1,12 +1,14 @@
-// sparse_voxel and the traversability rules: what is over the car is not an obstacle, what it
-// would touch is, a ceiling lower than the car closes the way, a bridge's deck does not replace
-// the road under it, and rays passing through a voxel clear it.
+// The 3D representations (sparse_voxel, multi_level_surface: every test runs for both) and
+// the traversability rules: what is over the car is not an obstacle, what it would touch is, a
+// ceiling lower than the car closes the way, a bridge's deck does not replace the road under
+// it, and rays passing through an element clear it.
 
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <limits>
 
+#include "sac_perception/multi_level_surface.hpp"
 #include "sac_perception/sparse_voxel.hpp"
 
 using namespace sac_perception;
@@ -24,9 +26,10 @@ VehicleBox car()
   return box;
 }
 
+template<typename Map>
 struct Fixture
 {
-  SparseVoxel map;
+  Map map;
   int source = 0;
   double time = 100.0;
 
@@ -81,11 +84,17 @@ struct Fixture
   }
   bool blocked(double x, double y) const { return value(x, y) >= 65; }
 };
+template<typename Map>
+class ColumnMaps : public testing::Test
+{
+};
+using Maps = testing::Types<SparseVoxel, MultiLevelSurface>;
+TYPED_TEST_SUITE(ColumnMaps, Maps);
 }  // namespace
 
-TEST(SparseVoxel, WhatTheCarWouldTouchAndWhatIsOverIt)
+TYPED_TEST(ColumnMaps, WhatTheCarWouldTouchAndWhatIsOverIt)
 {
-  Fixture f;
+  Fixture<TypeParam> f;
   f.ground(0.0f);
   for (int k = 0; k < 3; ++k) {
     f.scan({
@@ -102,9 +111,9 @@ TEST(SparseVoxel, WhatTheCarWouldTouchAndWhatIsOverIt)
   EXPECT_TRUE(f.blocked(10.05, -4.05));
 }
 
-TEST(SparseVoxel, ACeilingLowerThanTheCarClosesTheWay)
+TYPED_TEST(ColumnMaps, ACeilingLowerThanTheCarClosesTheWay)
 {
-  Fixture f;
+  Fixture<TypeParam> f;
   f.ground(0.0f);
   std::vector<Eigen::Vector3f> low, high;
   for (float x = 20.05f; x < 22.0f; x += 0.2f) {
@@ -119,9 +128,9 @@ TEST(SparseVoxel, ACeilingLowerThanTheCarClosesTheWay)
   EXPECT_FALSE(f.blocked(21.05, -3.05));
 }
 
-TEST(SparseVoxel, ADeckDoesNotReplaceTheRoadUnderIt)
+TYPED_TEST(ColumnMaps, ADeckDoesNotReplaceTheRoadUnderIt)
 {
-  Fixture f;
+  Fixture<TypeParam> f;
   f.ground(0.0f);
   f.ground(8.0f, 14.0f, 18.0f, -4.0f, 4.0f);  // the deck's top, taken for ground
   EXPECT_NEAR(f.map.columnGround(16.05, 0.05), 0.0f, 1e-3f);
@@ -137,9 +146,9 @@ TEST(SparseVoxel, ADeckDoesNotReplaceTheRoadUnderIt)
   EXPECT_NEAR(f.map.columnGround(16.05, 0.05), -2.0f, 1e-3f);
 }
 
-TEST(SparseVoxel, WithoutGroundAnObstacleStaysAnObstacle)
+TYPED_TEST(ColumnMaps, WithoutGroundAnObstacleStaysAnObstacle)
 {
-  Fixture f;
+  Fixture<TypeParam> f;
   for (int k = 0; k < 3; ++k) {
     f.scan({Eigen::Vector3f(10.05f, 0.05f, 0.1f)});
   }
@@ -147,9 +156,9 @@ TEST(SparseVoxel, WithoutGroundAnObstacleStaysAnObstacle)
   EXPECT_TRUE(f.blocked(10.05, 0.05));
 }
 
-TEST(SparseVoxel, RaysThroughAVoxelClearIt)
+TYPED_TEST(ColumnMaps, RaysThroughAnElementClearIt)
 {
-  Fixture f;
+  Fixture<TypeParam> f;
   f.ground(0.0f);
   for (int k = 0; k < 3; ++k) {
     f.scan({Eigen::Vector3f(10.05f, 0.05f, 0.5f)});
@@ -168,11 +177,11 @@ TEST(SparseVoxel, RaysThroughAVoxelClearIt)
   EXPECT_EQ(f.value(10.05, 0.05), 0);  // seen free
 }
 
-TEST(SparseVoxel, WithoutMemoryOnlyTheLastScanCounts)
+TYPED_TEST(ColumnMaps, WithoutMemoryOnlyTheLastScanCounts)
 {
   MapParams params;
   params.doubles["memory"] = 0.0;
-  Fixture f(params);
+  Fixture<TypeParam> f(params);
   f.ground(0.0f);
   const int other = f.map.addSource("front", LayerParams{});
   f.scan({Eigen::Vector3f(10.05f, 0.05f, 0.5f)});
@@ -189,7 +198,7 @@ TEST(SparseVoxel, WithoutMemoryOnlyTheLastScanCounts)
   MapParams windowed;  // a window: the scans of the last 0.25 s
   windowed.doubles["memory"] = 0.0;
   windowed.doubles["window"] = 0.25;
-  Fixture g(windowed);
+  Fixture<TypeParam> g(windowed);
   g.ground(0.0f);
   g.scan({Eigen::Vector3f(10.05f, 0.05f, 0.5f)});
   g.scan({});
@@ -199,9 +208,9 @@ TEST(SparseVoxel, WithoutMemoryOnlyTheLastScanCounts)
   EXPECT_FALSE(g.blocked(10.05, 0.05));
 }
 
-TEST(SparseVoxel, MovingTheWindowKeepsTheVoxels)
+TYPED_TEST(ColumnMaps, MovingTheWindowKeepsWhatItHolds)
 {
-  Fixture f;
+  Fixture<TypeParam> f;
   f.ground(0.0f);
   for (int k = 0; k < 3; ++k) {
     f.scan({Eigen::Vector3f(10.05f, 5.05f, 1.0f)});
@@ -210,11 +219,11 @@ TEST(SparseVoxel, MovingTheWindowKeepsTheVoxels)
   EXPECT_TRUE(f.blocked(10.05, 5.05));
 }
 
-TEST(SparseVoxel, StepsInTheGround)
+TYPED_TEST(ColumnMaps, StepsInTheGround)
 {
   MapParams params;
   params.doubles["max_step"] = 0.3;
-  Fixture f(params);
+  Fixture<TypeParam> f(params);
   f.ground(0.0f, -5.0f, 12.0f, -5.0f, 5.0f);
   f.ground(0.5f, 12.2f, 20.0f, -5.0f, 5.0f);   // a 0.5 m step at x = 12.2
   for (float x = -5.0f; x <= 20.0f; x += 0.2f) {  // a 20 % slope elsewhere: 0.04 m per cell
@@ -227,4 +236,44 @@ TEST(SparseVoxel, StepsInTheGround)
   EXPECT_FALSE(f.blocked(10.05, 0.05));
   EXPECT_FALSE(f.blocked(15.05, 0.05));
   EXPECT_FALSE(f.blocked(10.05, -8.95));
+}
+
+TEST(MultiLevelSurface, APoleIsOneIntervalADeckAnother)
+{
+  Fixture<MultiLevelSurface> f;
+  f.ground(0.0f);
+  std::vector<Eigen::Vector3f> points;
+  for (float z = 0.3f; z <= 1.5f; z += 0.25f) {  // a pole's points, 0.25 m apart
+    points.emplace_back(10.05f, 0.05f, z);
+  }
+  points.emplace_back(10.05f, 0.05f, 8.0f);  // a deck over it
+  points.emplace_back(10.05f, 0.05f, 8.2f);
+  f.scan(points);
+  const auto levels = f.map.column(10.05, 0.05);
+  ASSERT_EQ(levels.size(), 2u);
+  EXPECT_NEAR(levels[0].first, 0.3f, 1e-4f);
+  EXPECT_NEAR(levels[0].second, 1.3f, 1e-4f);
+  EXPECT_NEAR(levels[1].first, 8.0f, 1e-4f);
+  EXPECT_NEAR(levels[1].second, 8.2f, 1e-4f);
+  // An interval of its own at 2.1 m, then the pole growing up to it: they merge
+  f.scan({Eigen::Vector3f(10.05f, 0.05f, 2.1f), Eigen::Vector3f(10.05f, 0.05f, 1.55f),
+    Eigen::Vector3f(10.05f, 0.05f, 1.82f)});
+  const auto merged = f.map.column(10.05, 0.05);
+  ASSERT_EQ(merged.size(), 2u);
+  EXPECT_NEAR(merged[0].first, 0.3f, 1e-4f);
+  EXPECT_NEAR(merged[0].second, 2.1f, 1e-4f);
+}
+
+TEST(MultiLevelSurface, AtMostMaxLevels)
+{
+  MapParams params;
+  params.doubles["max_levels"] = 3;
+  Fixture<MultiLevelSurface> f(params);
+  f.scan({
+    Eigen::Vector3f(10.05f, 0.05f, 0.5f), Eigen::Vector3f(10.05f, 0.05f, 2.0f),
+    Eigen::Vector3f(10.05f, 0.05f, 2.9f), Eigen::Vector3f(10.05f, 0.05f, 6.0f)});
+  const auto levels = f.map.column(10.05, 0.05);
+  ASSERT_EQ(levels.size(), 3u);  // the two closest (2.0, 2.9) became one
+  EXPECT_NEAR(levels[1].first, 2.0f, 1e-4f);
+  EXPECT_NEAR(levels[1].second, 2.9f, 1e-4f);
 }

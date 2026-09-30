@@ -1,0 +1,22 @@
+# Over sim.yaml (perception.launch.py map:=multi_level_surface): the sensors' obstacle points kept in
+# height intervals per cell, the band applied per column over time
+# (multi_level_surface.hpp, traversability.hpp)
+/**:
+  ros__parameters:
+    map:
+      type: multi_level_surface
+      memory: true                # false: each sensor's last scan (or `window` [s]) only
+      window: 0.0
+      merge_gap: 0.3              # [m] a point this close to an interval joins it
+      max_levels: 6               # intervals per cell
+      thickness: 0.1              # [m] on each side of its points, for the rays through it
+      min_obstacle_height: 0.25   # [m] over the column's ground: kerbs and bumps are drivable
+      max_from: vehicle           # up to the car's height + clearance: over it is overhead
+      clearance: 0.3              # [m]
+      max_step: -1.0              # [m] the ground rising or falling to a neighbour (off)
+      level_gap: 1.0              # [m] a ground this far over a column's is another level
+      ground_search_radius: 1.0   # [m] a column without ground takes a neighbour's
+      ground_max_age: 3.0         # [s]
+    sources:
+      roof_lidar:
+        filters: [self, ground]   # no height_band: the map keeps what is over the car too

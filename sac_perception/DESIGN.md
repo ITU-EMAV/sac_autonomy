@@ -96,11 +96,11 @@ the band runs 0.25..2.13 m. A branch hanging down to 1.9 m is an obstacle, a sig
 not; another car or a sensor moved higher needs no change in the YAML. `max_from: sensor`
 takes the sensor's height instead, `fixed` the number.
 
-## sparse_voxel: the obstacles in 3D
-`map.type: sparse_voxel` (launch `map:=sparse_voxel`, or `perception_map:=` of sac_bringup)
-keeps the sources' obstacle points in voxels (0.2 m) instead of each source's 2D layer, and
-decides per column, over time, what the car cannot pass (`traversability.hpp`, the same rules
-for any 3D representation):
+## The 3D representations: sparse_voxel, multi_level_surface
+`map.type: sparse_voxel` or `multi_level_surface` (launch `map:=`, or `perception_map:=` of
+sac_bringup; `_memoryless` for the mode below) keep the sources' obstacle points in 3D
+instead of each source's 2D layer, and decide per column, over time, what the car cannot
+pass (`traversability.hpp`, the same rules for both):
 - the column's ground: the lowest level seen there (the ground map keeps a height more than
   `level_gap` (1 m) over the one it holds as another level: a deck does not replace the road
   under it), else a neighbour's within 1 m, else the ground filter's estimate under the point
@@ -108,10 +108,16 @@ for any 3D representation):
   `clearance` (2.13 m): what is over the car is kept but not in the way, and a ceiling lower
   than the car closes the way (a tunnel 1.8 m high is closed, one 3 m high is not: unit test)
 - `max_step` (off): the ground rising or falling more than this to the next cell
-- each voxel keeps its lowest and highest point, so the band's edges are not rounded to voxels
-Stored sparse in height and dense over the ground (each cell of the window holds the few
-voxels of its column), so a ray is traced in 2D as before and lowers the voxels it passes at
-the height it runs there. The roof lidar's chain has no height_band for it: the map keeps
+- each element keeps its lowest and highest point, so the band's edges are those of the points
+Both are stored sparse in height and dense over the ground (`column_map.hpp`: each cell of the
+window holds the few elements of its column), so a ray is traced in 2D as before and lowers
+the elements it passes at the height it runs there. They differ in the elements:
+- `sparse_voxel`: voxels of 0.2 m; a point joins the voxel it falls in
+- `multi_level_surface`: height intervals, after Triebel, Pfaff and Burgard's multi-level
+  surface maps (IROS 2006); a point within `merge_gap` (0.3 m) of an interval joins it, and
+  intervals that come that close merge: a pole or a pedestrian is one interval, a deck
+  another 8 m up; at most `max_levels` (6) per cell. An interval only grows while it lasts
+  (a ray lowers it as a whole, taking it 0.1 m thicker than its points) The roof lidar's chain has no height_band for it: the map keeps
 what is over the car too.
 
 Two modes (`map.memory`):
@@ -123,9 +129,17 @@ Two modes (`map.memory`):
 voxels (or direct_projection's occupied cells at their ground), with `blocks` 1 for what is in
 the grid and 0 for what is kept but not in the way.
 
-Without the simulation (unit test Benchmark, the same VLP-16 scan): into the map and ground
-map direct_projection 2.0 ms, sparse_voxel 9.6 ms (every ray traced from the sensor, not only
-its low end), without memory 1.1 ms; decaying and projecting 0.4 / 1.8 / 1.6 ms.
+Without the simulation (unit test Benchmark, the same VLP-16 scan), into the map and ground
+map, then decaying and projecting:
+
+| Map | Insert | Decay and project |
+|---|---|---|
+| direct_projection | 1.8 ms | 0.5 ms |
+| sparse_voxel, memory / no memory | 9.1 / 1.2 ms | 1.9 / 2.3 ms |
+| multi_level_surface, memory / no memory | 8.7 / 1.1 ms | 1.7 / 1.6 ms |
+
+With memory the time goes into tracing every ray from the sensor (direct_projection traces
+only a ray's low end), not into the elements: intervals save little over voxels.
 
 The same lap as above (obstacles beside the route, 4.4-4.6 km each):
 
@@ -134,13 +148,16 @@ The same lap as above (obstacles beside the route, 4.4-4.6 km each):
 | direct_projection | 1.4 % | 0.03 | 16-23 m | 11.9 ms |
 | sparse_voxel, memory | 1.1 % | 0.13 | 13-29 m | 36.8 ms |
 | sparse_voxel, no memory | **0.2 %** | 0.02 | 8-16 m | 10.1 ms |
+| multi_level_surface, memory | 0.9 % | 0.14 | 15-24 m | 34.6 ms |
+| multi_level_surface, no memory | **0.2 %** | 0.03 | 14-16 m | 11.7 ms |
 
 All ten obstacles were seen each time, their cells within 0.25 m of their footprints. Without
 memory a small obstacle shows only in scans that hit it: a 16-beam lidar misses a cone
 between its rings, so it is seen late (8 m); with memory it is kept, and seen from 13-29 m.
 Memory costs: every ray traced in 3D, 3-4 times the time of direct_projection with Gazebo on
-the same CPU. Most of its false cells are at one place, (-8, -117) to (4, -105), where the
-memoryless map has its worst too; not looked into yet. direct_projection stays the default.
+the same CPU. Most of the 3D maps' false cells are at one place, (-8, -117) to (7, -102),
+for every one of them; not looked into yet. They show for a scan or two and are cleared.
+direct_projection stays the default.
 
 ## The shared ground map
 Sources that find the ground write its height into the grid (`provides_ground`); sources that
