@@ -18,6 +18,7 @@
 #include <Eigen/Core>
 
 #include "sac_perception/params.hpp"
+#include "sac_perception/vehicle.hpp"
 
 namespace sac_perception
 {
@@ -46,15 +47,22 @@ class PointFilter
 {
 public:
   virtual ~PointFilter() = default;
+  /// The car's box (from the URDF), given before initialize(); may be unknown
+  void setVehicle(const VehicleBox & vehicle) { vehicle_ = vehicle; }
   virtual void initialize(const Params & params) = 0;
   /// Not const: a filter may learn from the scans it sees (one instance per source)
   virtual void apply(Cloud & cloud) = 0;
   /// Numbers about the last scan, for tuning (published with the source's timing)
   virtual std::vector<std::pair<std::string, double>> diagnostics() const { return {}; }
+
+protected:
+  VehicleBox vehicle_;
 };
 
 /// Drops the points inside a box (the car itself: body, rack, sensor posts), or outside it
-/// with `keep_inside`. min, max: [x, y, z] in base_footprint.
+/// with `keep_inside`. min, max: [x, y, z] in base_footprint; or `from: vehicle`: the car's
+/// box from the URDF grown by `margin` [m] (0.1) on every side. max_range [m]: also drops
+/// the points further than this from the sensor.
 class CropBox : public PointFilter
 {
 public:
@@ -65,6 +73,7 @@ private:
   Eigen::Vector3f min_{-1.6f, -0.95f, -0.5f};
   Eigen::Vector3f max_{1.7f, 0.95f, 2.3f};
   bool keep_inside_ = false;
+  float margin_ = 0.1f;
   float max_range_ = std::numeric_limits<float>::infinity();  // also drop points further away
 };
 
@@ -80,9 +89,14 @@ private:
 };
 
 
-/// Keeps the obstacle points between `min` and `max` [m] over the ground under them (over
-/// base_footprint's plane where the ground is unknown): drops overhanging branches, bridges,
-/// and bumps too small to matter.
+/// Keeps the obstacle points between `min` and the top of the band [m] over the ground under
+/// them (over base_footprint's plane where the ground is unknown): points lower than `min`
+/// are drivable (kerbs, bumps: ground), points over the top are overhead (branches, signs,
+/// bridges: dropped). The bottom follows the ground found by the filters before; the top:
+///   max_from: fixed     `max` [m] over the ground (2.5)
+///             vehicle   the car's height (its box from the URDF) + `clearance` [m] (0.3): what
+///                       the car would touch; nothing to set for another car or sensor
+///             sensor    the sensor's height over base_footprint + `clearance`
 class HeightBand : public PointFilter
 {
 public:
@@ -92,6 +106,8 @@ public:
 private:
   float min_ = 0.2f;
   float max_ = 2.5f;
+  enum class Top { kFixed, kVehicle, kSensor } top_ = Top::kFixed;
+  float clearance_ = 0.3f;
 };
 
 /// Keeps one point per `size` [m] voxel (the first), fewer rays to trace.

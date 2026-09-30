@@ -57,8 +57,8 @@ void GridSource::initialize(const SourceContext & context, const std::string & n
   layer.max = static_cast<float>(params_->getDouble("max", layer.max));
   layer.decay = static_cast<float>(params_->getDouble("decay", layer.decay));
   {
-    std::lock_guard<std::mutex> lock(context_.grid->mutex);
-    layer_ = context_.grid->grid->addLayer(name_, layer);
+    std::lock_guard<std::mutex> lock(context_.map->mutex);
+    index_ = context_.map->map->addSource(name_, layer);
   }
   configure(*params_);
   const std::string topic = params_->getString("topic", "");
@@ -146,7 +146,7 @@ void GridSource::record(double milliseconds)
   ++timing_.count;
 }
 
-void GridSource::prepareRays(const RollingGrid & grid, Scan & scan, double time) const
+void GridSource::prepareRays(const MapRepresentation & map, Scan & scan, double time) const
 {
   const bool limit = std::isfinite(max_mark_range_);
   if (ground_margin_ < 0.0 && !limit) {
@@ -158,7 +158,7 @@ void GridSource::prepareRays(const RollingGrid & grid, Scan & scan, double time)
       continue;
     }
     if (ground_margin_ >= 0.0 &&
-      grid.groundNear(ray.end.x(), ray.end.y(), ground_search_radius_, time, ground_max_age_, ground) &&
+      map.groundNear(ray.end.x(), ray.end.y(), ground_search_radius_, time, ground_max_age_, ground) &&
       ray.end.z() - ground < ground_margin_)
     {
       ray.hit = false;  // the ground: free up to and at it
@@ -188,6 +188,7 @@ void PointCloudSource::configure(const RosParams & params)
     const RosParams filter_params(context_.node, params.prefix() + filter + ".");
     const std::string type = filter_params.getString("type", filter);
     auto instance = context_.filters->createSharedInstance(type);
+    instance->setVehicle(context_.vehicle);
     instance->initialize(filter_params);
     filters_.push_back(instance);
     filter_names_.push_back(filter);
@@ -271,6 +272,7 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
   scan.origin = *base * cloud.origin;
   scan.clear_height = clear_height_;
   scan.max_clear_range = clear_ ? max_clear_range_ : 0.0f;
+  scan.time = stamp.seconds();
   scan.rays.reserve(count);
   for (std::size_t k = 0; k < count; ++k) {
     if (cloud.labels[k] == Cloud::kDropped) {
@@ -287,20 +289,20 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
     ray.ground_z = (*base * Eigen::Vector3f(p.x(), p.y(), ground)).z();
     scan.rays.push_back(ray);
   }
-  const double time = stamp.seconds();
+  const double time = scan.time;
   {
-    std::lock_guard<std::mutex> lock(context_.grid->mutex);
-    RollingGrid & grid = *context_.grid->grid;
+    std::lock_guard<std::mutex> lock(context_.map->mutex);
+    MapRepresentation & map = *context_.map->map;
     if (provides_ground_) {
       for (std::size_t k = 0; k < count; ++k) {
         if (cloud.labels[k] == Cloud::kGround) {
           const Eigen::Vector3f p = *base * cloud.points[k];
-          grid.setGround(p.x(), p.y(), p.z(), time);
+          map.setGround(p.x(), p.y(), p.z(), time);
         }
       }
     }
-    prepareRays(grid, scan, time);
-    grid.integrate(layer_, scan);
+    prepareRays(map, scan, time);
+    map.insert(index_, scan);
   }
   record(millisecondsSince(start));
 }
@@ -362,6 +364,7 @@ void LaserScanSource::onScan(const sensor_msgs::msg::LaserScan::ConstSharedPtr &
   Scan scan;
   scan.origin = to_grid.translation();
   scan.max_clear_range = max_clear_range_;
+  scan.time = stamp.seconds();
   scan.rays.reserve(message->ranges.size());
   for (std::size_t k = 0; k < message->ranges.size(); ++k) {
     float range = message->ranges[k];
@@ -379,9 +382,9 @@ void LaserScanSource::onScan(const sensor_msgs::msg::LaserScan::ConstSharedPtr &
     scan.rays.push_back(ray);  // ground_z -inf: free all along
   }
   {
-    std::lock_guard<std::mutex> lock(context_.grid->mutex);
-    prepareRays(*context_.grid->grid, scan, stamp.seconds());
-    context_.grid->grid->integrate(layer_, scan);
+    std::lock_guard<std::mutex> lock(context_.map->mutex);
+    prepareRays(*context_.map->map, scan, scan.time);
+    context_.map->map->insert(index_, scan);
   }
   record(millisecondsSince(start));
 }
@@ -424,8 +427,8 @@ void OccupancyGridSource::onGrid(const nav_msgs::msg::OccupancyGrid::ConstShared
   const Eigen::Isometry3f to_grid = *frame * origin;
   const float res = info.resolution;
   {
-    std::lock_guard<std::mutex> lock(context_.grid->mutex);
-    RollingGrid & grid = *context_.grid->grid;
+    std::lock_guard<std::mutex> lock(context_.map->mutex);
+    MapRepresentation & map = *context_.map->map;
     for (unsigned j = 0; j < info.height; ++j) {
       for (unsigned i = 0; i < info.width; ++i) {
         const int8_t v = message->data[j * info.width + i];
@@ -433,7 +436,7 @@ void OccupancyGridSource::onGrid(const nav_msgs::msg::OccupancyGrid::ConstShared
           continue;
         }
         const Eigen::Vector3f p = to_grid * Eigen::Vector3f((i + 0.5f) * res, (j + 0.5f) * res, 0.0f);
-        grid.set(layer_, p.x(), p.y(), v >= occupied_threshold_ ? 1e3f : -1e3f);  // clamped to the layer's range
+        map.set(index_, p.x(), p.y(), v >= occupied_threshold_ ? 1e3f : -1e3f);  // clamped to the layer's range
       }
     }
   }

@@ -6,13 +6,21 @@
 //   grid_frame (odom), base_frame (base_footprint)
 //   grid.size [m] (80), grid.resolution [m] (0.2), rate [Hz] (20): publishing and moving
 //   grid.recenter_distance [m] (2): the window moves once the car is this far off its centre
-//   occupied_threshold (0.65): the probability from which a cell counts as occupied
+//   map.type (direct_projection): how the sensors' data is kept and projected to the grid
+//     (map_representation.hpp), its parameters under map.
+//   vehicle.from: the car's box, for filters that follow the car (crop_box from: vehicle,
+//     height_band max_from: vehicle)
+//       robot_description  its URDF on vehicle.topic (/robot_description, from
+//                          robot_state_publisher); the sources start once it has come
+//       box                vehicle.box: [min x, y, z, max x, y, z] in base_frame
+//       none               (default) unknown
 //   sources.names: [...] and each source's parameters under sources.<name>.
 // Publishes:
 //   ~/grid     nav_msgs/OccupancyGrid in grid_frame, all layers combined (remapped to
 //              /sac/perception/grid)
 //   ~/timing   diagnostic_msgs/DiagnosticArray: per source the processing time [ms] (last,
-//              mean, max) and skipped messages, and the grid step's time
+//              mean, max) and skipped messages, and the grid step's time with the map's
+//              numbers
 
 #pragma once
 
@@ -22,6 +30,7 @@
 
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <tf2_ros/buffer.h>
@@ -40,16 +49,21 @@ public:
   explicit PerceptionNode(const rclcpp::NodeOptions & options);
 
 private:
+  /// The map and the sources, once the car's box is known
+  void start(const VehicleBox & vehicle);
   void tick();
 
   RosParams root_;
   std::string grid_frame_;
   std::string base_frame_;
-  float occupied_threshold_ = 0.65f;
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
-  SharedGrid grid_;
+  // The loaders before what they made: members go in reverse order
+  pluginlib::ClassLoader<MapRepresentation> map_loader_;
   pluginlib::ClassLoader<PointFilter> filter_loader_;
+  SharedMap map_;
+  VehicleBox vehicle_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr description_subscription_;
   pluginlib::ClassLoader<GridSource> source_loader_;
   std::vector<std::shared_ptr<GridSource>> sources_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr grid_publisher_;

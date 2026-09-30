@@ -10,7 +10,10 @@
       resolution: 0.2             # [m]
       recenter_distance: 2.0      # [m] the window moves once the car is this far off its centre
     rate: 20.0                    # [Hz]
-    occupied_threshold: 0.65
+    map:
+      type: direct_projection     # each source's rays straight into its own 2D layer
+    vehicle:
+      from: robot_description     # the car's box from its URDF: the filters below follow it
 
     sources:
       names: [roof_lidar, front_lidar]
@@ -21,8 +24,8 @@
         filters: [self, ground, band]
         self:                     # the car: body, rack and the sensor posts
           type: crop_box
-          min: [-1.5, -0.95, -0.3]
-          max: [1.5, 0.95, 2.1]
+          from: vehicle           # its box from the URDF
+          margin: 0.1             # [m] on every side
           max_range: 60.0         # [m] sparse and noisy beyond
         ground:                   # Patchwork++'s steps and defaults (ground_patchwork.hpp)
           type: ground_patchwork
@@ -47,7 +50,8 @@
         band:
           type: height_band
           min: 0.25               # [m] over the ground: kerbs and bumps are drivable
-          max: 2.5
+          max_from: vehicle       # up to what the car would touch: its height + clearance
+          clearance: 0.3          # [m]
         provides_ground: true     # its ground points go into the shared ground map
         clear_height: 0.3         # free space where a ray runs this low over the ground
         max_clear_range: 40.0

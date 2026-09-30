@@ -23,4 +23,7 @@
   <class name="occupancy_grid" type="sac_perception::OccupancyGridSource" base_class_type="sac_perception::GridSource">
     <description>nav_msgs/OccupancyGrid from another node (e.g. a camera)</description>
   </class>
+  <class name="direct_projection" type="sac_perception::DirectProjection" base_class_type="sac_perception::MapRepresentation">
+    <description>Each source's rays straight into its own 2D layer (the grid of Stage 1)</description>
+  </class>
 </library>

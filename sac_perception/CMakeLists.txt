@@ -23,16 +23,20 @@ find_package(tf2_eigen REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(urdf REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 # Core: grid and filters, no ROS
-add_library(sac_perception_core SHARED src/grid.cpp src/filters.cpp src/ground_patchwork.cpp)
+add_library(sac_perception_core SHARED src/grid.cpp src/filters.cpp src/ground_patchwork.cpp
+  src/map_representation.cpp)
 target_include_directories(sac_perception_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
 target_link_libraries(sac_perception_core PUBLIC Eigen3::Eigen)
 
 # ROS: sources and the node
-add_library(sac_perception_ros SHARED src/sources.cpp src/perception_node.cpp)
+add_library(sac_perception_ros SHARED src/sources.cpp src/perception_node.cpp src/robot_geometry.cpp)
 target_link_libraries(sac_perception_ros PUBLIC
   sac_perception_core
   rclcpp::rclcpp
@@ -43,7 +47,10 @@ target_link_libraries(sac_perception_ros PUBLIC
   tf2_eigen::tf2_eigen
   ${sensor_msgs_TARGETS}
   ${nav_msgs_TARGETS}
-  ${diagnostic_msgs_TARGETS})
+  ${diagnostic_msgs_TARGETS}
+  ${std_msgs_TARGETS}
+  urdf::urdf
+  ament_index_cpp::ament_index_cpp)
 rclcpp_components_register_node(sac_perception_ros
   PLUGIN "sac_perception::PerceptionNode"
   EXECUTABLE perception_node)
@@ -65,10 +72,12 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_perception test/test_grid.cpp test/test_filters.cpp test/test_benchmark.cpp)
   target_link_libraries(test_perception sac_perception_core)
+  ament_add_gtest(test_robot_geometry test/test_robot_geometry.cpp)
+  target_link_libraries(test_robot_geometry sac_perception_ros)
 endif()
 
 ament_export_targets(export_sac_perception HAS_LIBRARY_TARGET)
 ament_export_dependencies(
   eigen3_cmake_module Eigen3 rclcpp rclcpp_components pluginlib tf2 tf2_ros tf2_eigen
-  sensor_msgs nav_msgs diagnostic_msgs)
+  sensor_msgs nav_msgs diagnostic_msgs std_msgs urdf ament_index_cpp)
 ament_package()

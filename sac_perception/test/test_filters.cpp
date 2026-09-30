@@ -336,3 +336,58 @@ TEST(Filters, CropBoxHeightBandAndVoxel)
   EXPECT_EQ(cloud.labels[3], Cloud::kDropped);
   EXPECT_EQ(cloud.labels[4], Cloud::kDropped);
 }
+
+TEST(Filters, TheBandsTopFollowsTheCar)
+{
+  VehicleBox car;
+  car.min = Eigen::Vector3f(-1.4f, -0.85f, 0.0f);
+  car.max = Eigen::Vector3f(1.45f, 0.85f, 1.85f);
+  car.known = true;
+  auto scene = [] {
+    Cloud cloud;
+    cloud.origin = Eigen::Vector3f(0.0f, 0.0f, 1.8f);
+    cloud.points = {
+      Eigen::Vector3f(10.0f, 0.0f, 1.9f),   // hanging down to 1.9 m: the roof would hit it
+      Eigen::Vector3f(10.0f, 1.0f, 2.3f),   // 2.3 m: over the car and its clearance
+      Eigen::Vector3f(10.0f, 2.0f, 4.0f),   // a sign
+      Eigen::Vector3f(0.5f, 0.2f, 1.7f)};   // the car's own rack
+    cloud.labels.assign(cloud.points.size(), Cloud::kObstacle);
+    cloud.ground_z.assign(cloud.points.size(), 0.0f);
+    return cloud;
+  };
+
+  HeightBand band;
+  band.setVehicle(car);
+  MapParams p;
+  p.strings["max_from"] = "vehicle";
+  p.doubles["clearance"] = 0.3;  // top: 2.15 m
+  band.initialize(p);
+  Cloud cloud = scene();
+  band.apply(cloud);
+  EXPECT_EQ(cloud.labels[0], Cloud::kObstacle);
+  EXPECT_EQ(cloud.labels[1], Cloud::kDropped);
+  EXPECT_EQ(cloud.labels[2], Cloud::kDropped);
+
+  HeightBand by_sensor;  // top: 1.8 + 0.6 m
+  MapParams s;
+  s.strings["max_from"] = "sensor";
+  s.doubles["clearance"] = 0.6;
+  by_sensor.initialize(s);
+  cloud = scene();
+  by_sensor.apply(cloud);
+  EXPECT_EQ(cloud.labels[1], Cloud::kObstacle);
+  EXPECT_EQ(cloud.labels[2], Cloud::kDropped);
+
+  CropBox crop;
+  crop.setVehicle(car);
+  MapParams c;
+  c.strings["from"] = "vehicle";
+  crop.initialize(c);
+  cloud = scene();
+  crop.apply(cloud);
+  EXPECT_EQ(cloud.labels[0], Cloud::kObstacle);
+  EXPECT_EQ(cloud.labels[3], Cloud::kDropped);
+
+  HeightBand unknown;  // no car's box: a clear error, not a silent default
+  EXPECT_THROW(unknown.initialize(p), std::invalid_argument);
+}

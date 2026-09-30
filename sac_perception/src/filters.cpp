@@ -31,8 +31,20 @@ float getFloat(const Params & params, const std::string & key, float fallback)
 // ---------------------------------------------------------------- crop box
 void CropBox::initialize(const Params & params)
 {
-  min_ = readVector3(params, "min", min_);
-  max_ = readVector3(params, "max", max_);
+  const std::string from = params.getString("from", "box");
+  margin_ = getFloat(params, "margin", margin_);
+  if (from == "vehicle") {
+    if (!vehicle_.known) {
+      throw std::invalid_argument("crop_box from: vehicle needs the car's box (vehicle.from in the node)");
+    }
+    min_ = vehicle_.min - Eigen::Vector3f::Constant(margin_);
+    max_ = vehicle_.max + Eigen::Vector3f::Constant(margin_);
+  } else if (from == "box") {
+    min_ = readVector3(params, "min", min_);
+    max_ = readVector3(params, "max", max_);
+  } else {
+    throw std::invalid_argument("crop_box from: box or vehicle, not '" + from + "'");
+  }
   keep_inside_ = params.getBool("keep_inside", keep_inside_);
   max_range_ = getFloat(params, "max_range", max_range_);
 }
@@ -73,10 +85,26 @@ void HeightBand::initialize(const Params & params)
 {
   min_ = getFloat(params, "min", min_);
   max_ = getFloat(params, "max", max_);
+  clearance_ = getFloat(params, "clearance", clearance_);
+  const std::string top = params.getString("max_from", "fixed");
+  if (top == "fixed") {
+    top_ = Top::kFixed;
+  } else if (top == "vehicle") {
+    if (!vehicle_.known) {
+      throw std::invalid_argument("height_band max_from: vehicle needs the car's box (vehicle.from in the node)");
+    }
+    top_ = Top::kVehicle;
+    max_ = vehicle_.height() + clearance_;
+  } else if (top == "sensor") {
+    top_ = Top::kSensor;
+  } else {
+    throw std::invalid_argument("height_band max_from: fixed, vehicle or sensor, not '" + top + "'");
+  }
 }
 
 void HeightBand::apply(Cloud & cloud)
 {
+  const float top = top_ == Top::kSensor ? cloud.origin.z() + clearance_ : max_;
   for (std::size_t k = 0; k < cloud.size(); ++k) {
     if (cloud.labels[k] != Cloud::kObstacle) {
       continue;
@@ -86,7 +114,7 @@ void HeightBand::apply(Cloud & cloud)
     if (height < min_) {
       cloud.labels[k] = Cloud::kGround;  // too low to matter: drivable
       cloud.ground_z[k] = cloud.points[k].z();
-    } else if (height > max_) {
+    } else if (height > top) {
       cloud.labels[k] = Cloud::kDropped;  // overhead
     }
   }

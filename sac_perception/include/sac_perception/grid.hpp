@@ -47,6 +47,7 @@ struct Scan
   std::vector<Ray> rays;
   float clear_height = std::numeric_limits<float>::infinity();
   float max_clear_range = 40.0f;             // [m] no clearing beyond (cost)
+  double time = 0.0;                         // [s] when it was taken
 };
 
 class RollingGrid

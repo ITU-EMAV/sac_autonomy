@@ -7,6 +7,7 @@
 #include <random>
 
 #include "sac_perception/grid.hpp"
+#include "sac_perception/map_representation.hpp"
 
 using namespace sac_perception;
 
@@ -192,4 +193,40 @@ TEST(Grid, DistanceTransformIsExact)
     }
   }
   EXPECT_TRUE(std::isinf(distanceTransform(std::vector<uint8_t>(w * w, 0), w, 0.2)[0]));
+}
+
+TEST(Grid, DirectProjectionIsTheGridOfStageOne)
+{
+  GridGeometry geometry;
+  geometry.size = 40.0;
+  DirectProjection map;
+  MapParams none;
+  map.initialize(none, geometry, VehicleBox{});
+  RollingGrid g(geometry.size, geometry.resolution);
+  g.setRecenterDistance(geometry.recenter_distance);
+  const int a = map.addSource("a", LayerParams{});
+  const int b = map.addSource("b", LayerParams{});
+  g.addLayer("a", LayerParams{});
+  g.addLayer("b", LayerParams{});
+  map.recenter(0.0, 0.0);
+  g.recenter(0.0, 0.0);
+  Scan scan;
+  scan.origin = Eigen::Vector3f(0.0f, 0.0f, 1.8f);
+  std::mt19937 rng(3);
+  std::uniform_real_distribution<float> xy(-15.0f, 15.0f);
+  for (int k = 0; k < 500; ++k) {
+    scan.rays.push_back(ray(xy(rng), xy(rng), 0.5f, k % 3 == 0, 0.0f));
+  }
+  scan.clear_height = 0.3f;
+  map.insert(a, scan);
+  g.integrate(0, scan);
+  map.set(b, 3.0, 3.0, 2.0f);
+  g.set(1, 3.0, 3.0, 2.0f);
+  map.decay(0.1);
+  g.decay(0.1);
+  EXPECT_EQ(map.project(), g.combined());
+  map.recenter(9.0, -7.0);
+  g.recenter(9.0, -7.0);
+  EXPECT_EQ(map.project(), g.combined());
+  EXPECT_DOUBLE_EQ(map.originX(), g.originX());
 }

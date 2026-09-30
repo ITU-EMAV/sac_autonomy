@@ -1,5 +1,7 @@
 // Grid sources: one per sensor in the config, a plugin per message type (pluginlib, base
-// class sac_perception::GridSource). Each writes its own layer of the grid.
+// class sac_perception::GridSource). Each hands its scans to the map representation
+// (map_representation.hpp), as its own source there (a layer of the 2D grid in
+// direct_projection).
 //
 //   sources:
 //     names: [roof_lidar, front_lidar]
@@ -51,17 +53,17 @@
 #include <tf2_ros/buffer.h>
 
 #include "sac_perception/filters.hpp"
-#include "sac_perception/grid.hpp"
+#include "sac_perception/map_representation.hpp"
 #include "sac_perception/ros_params.hpp"
 
 namespace sac_perception
 {
 
-/// The grid the sources write into, shared with the node (which publishes it).
-struct SharedGrid
+/// The map the sources write into, shared with the node (which publishes it).
+struct SharedMap
 {
   std::mutex mutex;
-  std::unique_ptr<RollingGrid> grid;
+  std::shared_ptr<MapRepresentation> map;
 };
 
 struct SourceContext
@@ -70,8 +72,9 @@ struct SourceContext
   std::shared_ptr<tf2_ros::Buffer> tf;
   std::string grid_frame;   // odom
   std::string base_frame;   // base_footprint
-  SharedGrid * grid = nullptr;
+  SharedMap * map = nullptr;
   pluginlib::ClassLoader<PointFilter> * filters = nullptr;
+  VehicleBox vehicle;       // the car's box, for the filters (may be unknown)
 };
 
 /// Processing time of the last messages, for ~/timing.
@@ -89,7 +92,7 @@ class GridSource
 public:
   virtual ~GridSource() = default;
 
-  /// Reads "sources.<name>.", adds its layer to the grid and subscribes.
+  /// Reads "sources.<name>.", adds itself to the map and subscribes.
   void initialize(const SourceContext & context, const std::string & name, std::shared_ptr<RosParams> params);
 
   const std::string & name() const { return name_; }
@@ -125,7 +128,7 @@ protected:
   void skip();
   /// Before a scan goes into the grid (grid locked): with ground_margin, returns lying on the
   /// known ground become free rays; returns beyond max_mark_range are not marked
-  void prepareRays(const RollingGrid & grid, Scan & scan, double time) const;
+  void prepareRays(const MapRepresentation & map, Scan & scan, double time) const;
 
   bool provides_ground_ = false;
   double ground_margin_ = -1.0;  // < 0: off
@@ -136,7 +139,7 @@ protected:
   SourceContext context_;
   std::string name_;
   std::shared_ptr<RosParams> params_;
-  int layer_ = 0;
+  int index_ = 0;  // in the map
   double max_age_ = 0.5;
   std::optional<Eigen::Isometry3f> mount_;
 
