@@ -13,7 +13,7 @@ localization_global:
       longitude: -122.4579944
       altitude: 0.0
       heading: 0.83               # [deg] counter-clockwise from east to the map's x axis
-    initial_pose_topic: /initialpose
+    initial_pose_topic: /sac/localization/initial_pose
 
     estimator:
       type: ekf                   # ekf | iekf | ukf

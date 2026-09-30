@@ -131,7 +131,7 @@ localization_global:
     odom_frame: odom                # the global filter publishes map -> odom
     history: 1.0                    # [s] how late a measurement may be
     datum: {latitude: 38.1628083, longitude: -122.4579944, altitude: 0.0, heading: 0.83}
-    initial_pose_topic: /initialpose
+    initial_pose_topic: /sac/localization/initial_pose
 
     estimator:
       type: ekf                     # ekf | iekf | ukf
@@ -222,7 +222,7 @@ Implemented and tested (16 unit tests in `test/`, plus the simulation):
 - adapters: `imu`, `gnss_position`, `wheel`, `zero_velocity`, `nonholonomic`, `odometry`,
   `twist`, `pose`
 - node: local and global instances, start from the GNSS antennas (position and yaw from the
-  baseline), `/initialpose`, `~/reset`, live tuning of adapter noise and the motion model
+  baseline), `/sac/localization/initial_pose`, `~/reset`, live tuning of adapter noise and the motion model
 - outputs: TF, odometry, fix, status, and in the simulation the error against Gazebo
 - configs `config/sim_{local,global}.yaml`, overlays `config/models/*.yaml`,
   `launch/localization.launch.py`; `sac_bringup`'s `autonomy.launch.py localization:=true`

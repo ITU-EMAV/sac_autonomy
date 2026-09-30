@@ -110,6 +110,8 @@ these names, types and meanings; a change here is a change in `sac_drivers` and
 | `/sac/planning/route_geojson` | `foxglove_msgs/GeoJSON` | the route on the world map, for a Map panel |
 | `/sac/planning/trajectory` | `sac_planning_msgs/Trajectory` | the local planner's trajectory in `map`, 10 Hz: points every 0.5 m with a speed each; `stopping` when there is no way past |
 | `/sac/planning/candidates` | `visualization_msgs/MarkerArray` | the candidates (free green, blocked red, the chosen one blue) |
+| `/sac/planning/goal` | `geometry_msgs/PoseStamped` | a goal clicked in the viewer (3D panel, publish pose); nothing uses it yet |
+| `/sac/localization/initial_pose` | `geometry_msgs/PoseWithCovarianceStamped` | where the car is, clicked in the viewer (publish pose estimate): restarts the global filter there |
 | `/sac/planning/timing` | `diagnostic_msgs/DiagnosticArray` | planning time, free candidates, the chosen offset, the costs |
 | `/sac/perception/grid` | `nav_msgs/OccupancyGrid` | the local occupancy grid in `odom`, 80 x 80 m around the car, 20 Hz: -1 unknown, 0-100 occupancy |
 | `/sac/perception/timing` | `diagnostic_msgs/DiagnosticArray` | processing time per sensor source and of the grid step [ms] |
