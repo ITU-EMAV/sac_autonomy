@@ -74,7 +74,21 @@ LocalPlannerNode::LocalPlannerNode(const rclcpp::NodeOptions & options)
   limits.max_acceleration = root_.getDouble("limits.max_acceleration", limits.max_acceleration);
   limits.max_deceleration = root_.getDouble("limits.max_deceleration", limits.max_deceleration);
   limits.stop_margin = root_.getDouble("limits.stop_margin", limits.stop_margin);
-  planner_ = std::make_unique<LocalPlanner>(generator, costs, footprint, limits);
+  MovingLimits moving;
+  moving.enabled = root_.getBool("moving.enabled", moving.enabled);
+  moving.time_margin = root_.getDouble("moving.time_margin", moving.time_margin);
+  moving.horizon = root_.getDouble("moving.horizon", moving.horizon);
+  moving.safety = root_.getDouble("moving.safety", moving.safety);
+  moving.speed_uncertainty = root_.getDouble("moving.speed_uncertainty", moving.speed_uncertainty);
+  moving.max_uncertainty = root_.getDouble("moving.max_uncertainty", moving.max_uncertainty);
+  moving.corridor = root_.getDouble("moving.corridor", moving.corridor);
+  moving.crossing_speed = root_.getDouble("moving.crossing_speed", moving.crossing_speed);
+  objects_max_age_ = root_.getDouble("moving.max_age", objects_max_age_);
+  objects_hold_ = root_.getDouble("moving.hold", objects_hold_);
+  selection_.enabled = root_.getBool("moving.yield_to_unconfirmed", selection_.enabled);
+  selection_.small_size = root_.getDouble("moving.small_size", selection_.small_size);
+  selection_.min_speed = root_.getDouble("moving.min_speed", selection_.min_speed);
+  planner_ = std::make_unique<LocalPlanner>(generator, costs, footprint, limits, moving);
 
   tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -84,6 +98,9 @@ LocalPlannerNode::LocalPlannerNode(const rclcpp::NodeOptions & options)
     "path", latched, [this](const nav_msgs::msg::Path::ConstSharedPtr & m) { onPath(m); });
   grid_subscription_ = create_subscription<nav_msgs::msg::OccupancyGrid>(
     "grid", rclcpp::QoS(1), [this](const nav_msgs::msg::OccupancyGrid::ConstSharedPtr & m) { onGrid(m); });
+  objects_subscription_ = create_subscription<sac_perception_msgs::msg::TrackedObjects>(
+    "objects", rclcpp::QoS(1),
+    [this](const sac_perception_msgs::msg::TrackedObjects::ConstSharedPtr & m) { objects_ = m; });
   trajectory_publisher_ = create_publisher<sac_planning_msgs::msg::Trajectory>("~/trajectory", rclcpp::QoS(1));
   candidates_publisher_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/candidates", rclcpp::QoS(1));
   timing_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("~/timing", rclcpp::QoS(1));
@@ -189,6 +206,66 @@ void LocalPlannerNode::tick()
   }
   context.obstacles = &obstacles_;
 
+  // The moving objects, from the grid's frame (odom) into the map, brought to now; each held
+  // for a while after it was last seen moving
+  moving_.clear();
+  if (objects_ && objects_->header.frame_id == grid_frame_) {
+    const double age = (stamp - rclcpp::Time(objects_->header.stamp)).seconds();
+    if (age <= objects_max_age_) {
+      const double c = std::cos(obstacles_.yaw);
+      const double s = std::sin(obstacles_.yaw);
+      for (const auto & o : objects_->objects) {
+        if (!o.confirmed) {
+          continue;
+        }
+        bool sure = false;
+        if (!o.moving && !selection_.enabled) {
+          continue;
+        }
+        if (!o.moving) {  // small, and its speed sure?
+          const double speed = std::hypot(o.velocity.x, o.velocity.y);
+          if (std::max(o.length, o.width) > selection_.small_size || speed < 1e-3) {
+            continue;
+          }
+          const double ux = o.velocity.x / speed;
+          const double uy = o.velocity.y / speed;
+          const double var = ux * ux * o.velocity_covariance[0] + 2.0 * ux * uy * o.velocity_covariance[1] +
+            uy * uy * o.velocity_covariance[3];
+          sure = speed - 2.0 * std::sqrt(std::max(0.0, var)) > selection_.min_speed;
+          if (!sure) {
+            continue;
+          }
+        }
+        // map <- grid: the inverse of grid <- map (rotation by yaw, then translation)
+        const double gx = o.position.x + o.velocity.x * std::max(0.0, age) - obstacles_.tx;
+        const double gy = o.position.y + o.velocity.y * std::max(0.0, age) - obstacles_.ty;
+        MovingObject m;
+        m.position = Eigen::Vector2d(c * gx + s * gy, -s * gx + c * gy);
+        m.velocity = Eigen::Vector2d(c * o.velocity.x + s * o.velocity.y, -s * o.velocity.x + c * o.velocity.y);
+        m.radius = std::max(0.3, 0.5 * std::hypot(o.length, o.width));
+        m.sigma = std::sqrt(std::max(0.0f, std::max(o.position_covariance[0], o.position_covariance[3])));
+        m.moving = o.moving;
+        auto held = held_.find(o.id);
+        if (held != held_.end() && held->second.object.moving) {
+          m.moving = true;  // once moving, held so
+        }
+        held_[o.id] = Held{m, stamp};
+      }
+    }
+  }
+  for (auto it = held_.begin(); it != held_.end();) {
+    const double since = (stamp - it->second.seen).seconds();
+    if (since > objects_hold_) {
+      it = held_.erase(it);
+      continue;
+    }
+    MovingObject m = it->second.object;
+    m.position += m.velocity * std::max(0.0, since);
+    moving_.push_back(m);
+    ++it;
+  }
+  context.moving = &moving_;
+
   const auto start = std::chrono::steady_clock::now();
   const PlanResult result = planner_->plan(context);
   const double plan_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
@@ -214,7 +291,9 @@ void LocalPlannerNode::tick()
     keyValue("candidates", static_cast<double>(result.candidates.size())),
     keyValue("free", static_cast<double>(free)),
     keyValue("target_d", previous_target_d_), keyValue("stopping", result.stopping ? 1.0 : 0.0),
-    keyValue("speed", speed_), keyValue("d", context.d)};
+    keyValue("speed", speed_), keyValue("d", context.d),
+    keyValue("moving_objects", static_cast<double>(moving_.size())),
+    keyValue("yielding", result.candidates[result.chosen].blocked_by_moving ? 1.0 : 0.0)};
   for (const auto & [name, value] : result.candidates[result.chosen].costs) {
     status.values.push_back(keyValue("cost." + name, value));
   }

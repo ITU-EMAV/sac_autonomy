@@ -97,13 +97,13 @@ protected:
     uint32_t hit_scan;   // the scan that hit it last: its rays do not lower it
     int16_t iz;          // a voxel's index in height (sparse_voxel)
     uint8_t source;      // who saw it last (its decay)
+    uint8_t dynamic;     // its last point took a cell known free (grid.hpp FreeSpaceParams)
   };
   struct Column
   {
     std::vector<Element> elements;
     float estimated_ground = std::numeric_limits<float>::quiet_NaN();  // from the ground filter
     float seen = -1.0f;  // [s] since the start: a ray passed or a point fell here
-    float free = -std::numeric_limits<float>::infinity();  // [s] since the start: found free
     // The ground under it as last found, and when (found again after ground_cache_time)
     mutable float ground = std::numeric_limits<float>::quiet_NaN();
     mutable float ground_at = -std::numeric_limits<float>::infinity();
@@ -172,7 +172,6 @@ private:
   int blocks_ = 0;                   // blocks across
   std::vector<uint8_t> block_full_;  // holds an element
   std::vector<float> block_seen_;    // [s] since the start: a ray crossed it
-  std::vector<float> block_free_;    // [s] since the start: a ray crossed it with nothing in it
   std::vector<Eigen::Vector3f> trace_;  // the rays to trace (merged)
   std::unique_ptr<RollingGrid> plane_;  // the window, the ground map and 2D layers
   std::vector<Column> columns_;
@@ -184,6 +183,7 @@ private:
   const Source * source_ = nullptr;
   int source_index_ = 0;
   float now_ = 0.0f;
+  bool dynamic_ = false;
 };
 
 }  // namespace sac_perception

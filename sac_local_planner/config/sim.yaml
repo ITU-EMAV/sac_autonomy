@@ -43,3 +43,18 @@
       max_acceleration: 2.0
       max_deceleration: 4.0
       stop_margin: 3.0            # [m] stop this far before an obstacle
+
+    moving:                       # the perception's moving objects (people crossing), in time
+      enabled: true
+      time_margin: 1.0            # [s] around when the car would be there
+      horizon: 6.0                # [s] followed this far ahead
+      safety: 0.5                 # [m] beyond the footprint and the object
+      speed_uncertainty: 0.3      # [m/s] the object's place grows this uncertain
+      max_uncertainty: 1.5        # [m]
+      corridor: 4.0               # [m] each side of the route: someone crossing in it is yielded to
+      crossing_speed: 0.3         # [m/s] across the route: crossing
+      max_age: 0.5                # [s] older objects are not used
+      hold: 1.5                   # [s] one seen moving is kept that long (its track may drop out)
+      small_size: 1.2             # [m] for yielding, a small object with a sure speed counts ...
+      min_speed: 0.5              # [m/s] ... (speed less 2 sigma), though not called moving yet
+      yield_to_unconfirmed: false # off: the perception's high-confidence free space calls them moving

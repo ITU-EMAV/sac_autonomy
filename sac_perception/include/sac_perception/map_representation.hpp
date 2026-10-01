@@ -43,8 +43,8 @@ struct RecentPoint
   Eigen::Vector2f xy;  // grid frame
   float top;           // [m] its highest point over the ground (NaN: unknown)
   double time;         // [s] when it was seen
-  double free;         // [s] when its cell was last seen free before (-inf: never): a cell
-                       // seen free a moment ago and taken now is something moving into it
+  bool dynamic;        // it took a cell known free with high confidence (grid.hpp
+                       // FreeSpaceParams), or one next to it: it moved there
 };
 
 /// The published window
@@ -60,7 +60,8 @@ class MapRepresentation
 public:
   virtual ~MapRepresentation() = default;
 
-  /// `params` under "map."; `vehicle` from the URDF (may be unknown)
+  /// `params` under "map." (and "map.free_space." for FreeSpaceParams); `vehicle` from the
+  /// URDF (may be unknown)
   virtual void initialize(const Params & params, const GridGeometry & geometry, const VehicleBox & vehicle) = 0;
 
   /// A source's own share of the map (a layer, its own hit/miss/decay); returns its index
@@ -101,6 +102,9 @@ public:
   /// Numbers for tuning, published with the timing
   virtual std::vector<std::pair<std::string, double>> diagnostics() const { return {}; }
 };
+
+/// FreeSpaceParams from "free_space.burn_in", ".sparsity", ".static_after"
+FreeSpaceParams readFreeSpace(const Params & params);
 
 /// The grid of Stage 1, as it was: each source's filters decide per point what is an
 /// obstacle (ground_patchwork, height_band), each source writes its own 2D layer (marks

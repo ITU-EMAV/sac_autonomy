@@ -8,9 +8,61 @@ namespace sac_local_planner
 
 LocalPlanner::LocalPlanner(
   std::shared_ptr<TrajectoryGenerator> generator, std::vector<WeightedCost> costs, Footprint footprint,
-  SpeedLimits limits)
-: generator_(std::move(generator)), costs_(std::move(costs)), footprint_(std::move(footprint)), limits_(limits)
+  SpeedLimits limits, MovingLimits moving)
+: generator_(std::move(generator)), costs_(std::move(costs)), footprint_(std::move(footprint)), limits_(limits),
+  moving_(moving)
 {
+}
+
+namespace
+{
+/// Distance from p to the segment a-b
+double toSegment(const Eigen::Vector2d & p, const Eigen::Vector2d & a, const Eigen::Vector2d & b)
+{
+  const Eigen::Vector2d ab = b - a;
+  const double length2 = ab.squaredNorm();
+  const double t = length2 > 1e-12 ? std::clamp((p - a).dot(ab) / length2, 0.0, 1.0) : 0.0;
+  return (p - (a + t * ab)).norm();
+}
+}  // namespace
+
+void LocalPlanner::checkMoving(Candidate & candidate, const std::vector<MovingObject> & objects, double speed) const
+{
+  if (objects.empty() || candidate.points.empty()) {
+    return;
+  }
+  // When the car would be at each point, driving it free
+  const std::vector<double> v = speedProfile(candidate, speed, std::numeric_limits<double>::infinity());
+  double t = 0.0;
+  for (std::size_t i = 0; i < candidate.points.size(); ++i) {
+    if (i > 0) {
+      t += candidate.step / std::max(0.1, 0.5 * (v[i - 1] + v[i]));
+    }
+    const double along = static_cast<double>(i) * candidate.step;
+    if (t - moving_.time_margin > moving_.horizon || along >= candidate.blocked_at) {
+      return;  // beyond what is followed, or blocked by the grid before
+    }
+    const Pose2 & p = candidate.points[i];
+    const Eigen::Vector2d heading(std::cos(p.yaw), std::sin(p.yaw));
+    const double from = std::max(0.0, t - moving_.time_margin);
+    const double to = std::min(moving_.horizon, t + moving_.time_margin);
+    for (const MovingObject & o : objects) {
+      if (!o.moving) {
+        continue;  // only its speed is sure: for yielding
+      }
+      const Eigen::Vector2d a = o.position + o.velocity * from;
+      const Eigen::Vector2d b = o.position + o.velocity * to;
+      const double reach = footprint_.radius + o.radius + moving_.safety + o.sigma +
+        std::min(moving_.max_uncertainty, moving_.speed_uncertainty * to);
+      for (double offset : footprint_.offsets) {
+        if (toSegment(Eigen::Vector2d(p.x, p.y) + offset * heading, a, b) < reach) {
+          candidate.blocked_at = along;
+          candidate.blocked_by_moving = true;
+          return;
+        }
+      }
+    }
+  }
 }
 
 void LocalPlanner::check(Candidate & candidate, const DistanceMap & obstacles) const
@@ -62,6 +114,53 @@ std::vector<double> LocalPlanner::speedProfile(const Candidate & candidate, doub
   return v;
 }
 
+double LocalPlanner::yieldAt(const PlanningContext & context) const
+{
+  double nearest = std::numeric_limits<double>::infinity();
+  if (!moving_.enabled || context.moving == nullptr || context.route == nullptr) {
+    return nearest;
+  }
+  const ReferencePath & route = *context.route;
+  for (const MovingObject & o : *context.moving) {
+    const Eigen::Vector2d sd = route.toFrenet(o.position, context.s, 80.0);
+    double ahead = sd.x() - context.s;
+    if (route.closed()) {
+      ahead = route.wrap(ahead + route.length() / 2.0) - route.length() / 2.0;
+    }
+    if (ahead < -2.0) {
+      continue;  // behind the car
+    }
+    const double yaw = route.at(sd.x()).yaw;
+    const double across = -std::sin(yaw) * o.velocity.x() + std::cos(yaw) * o.velocity.y();
+    if (std::abs(across) < moving_.crossing_speed) {
+      continue;  // along the road: the candidates go around it
+    }
+    // When it is within the corridor: [enter, leave] (in it already: enter <= 0)
+    const double edge = moving_.corridor + o.radius;
+    double enter = (std::copysign(edge, -across) - sd.y()) / across;
+    double leave = (std::copysign(edge, across) - sd.y()) / across;
+    if (leave < 0.0) {
+      continue;  // it has crossed
+    }
+    // The soonest the car could be there: speeding up to max_speed
+    const double v = std::max(0.0, context.speed);
+    const double a = limits_.max_acceleration;
+    const double to_max = (limits_.max_speed - v) / a;
+    const double d_max = v * to_max + 0.5 * a * to_max * to_max;
+    const double distance = std::max(0.0, ahead);
+    const double arrive = distance <= d_max ? (-v + std::sqrt(v * v + 2.0 * a * distance)) / a :
+      to_max + (distance - d_max) / limits_.max_speed;
+    if (enter > arrive + moving_.time_margin || enter > moving_.horizon) {
+      continue;  // the car is past before it gets there
+    }
+    // Stop before the car's front and the person meet
+    const double front = footprint_.offsets.empty() ? 0.0 :
+      *std::max_element(footprint_.offsets.begin(), footprint_.offsets.end());
+    nearest = std::min(nearest, std::max(0.0, ahead - front - footprint_.radius - o.radius - moving_.safety));
+  }
+  return nearest;
+}
+
 PlanResult LocalPlanner::plan(const PlanningContext & context) const
 {
   PlanResult result;
@@ -69,9 +168,17 @@ PlanResult LocalPlanner::plan(const PlanningContext & context) const
   if (result.candidates.empty()) {
     return result;
   }
+  const double yield = yieldAt(context);
   for (Candidate & c : result.candidates) {
     if (context.obstacles != nullptr) {
       check(c, *context.obstacles);
+    }
+    if (moving_.enabled && context.moving != nullptr) {
+      checkMoving(c, *context.moving, context.speed);
+    }
+    if (yield < c.blocked_at) {  // someone crossing: no candidate goes on past them
+      c.blocked_at = yield;
+      c.blocked_by_moving = true;
     }
     c.cost = 0.0;
     c.costs.clear();

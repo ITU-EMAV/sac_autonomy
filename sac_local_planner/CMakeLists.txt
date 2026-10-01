@@ -23,6 +23,7 @@ find_package(nav_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(sac_planning_msgs REQUIRED)
+find_package(sac_perception_msgs REQUIRED)
 find_package(sac_perception REQUIRED)
 
 # Core: route, candidates, costs, collision checks and speeds, no ROS
@@ -54,7 +55,8 @@ target_link_libraries(sac_local_planner_ros PUBLIC
   ${nav_msgs_TARGETS}
   ${visualization_msgs_TARGETS}
   ${diagnostic_msgs_TARGETS}
-  ${sac_planning_msgs_TARGETS})
+  ${sac_planning_msgs_TARGETS}
+  ${sac_perception_msgs_TARGETS})
 target_include_directories(sac_local_planner_ros PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)

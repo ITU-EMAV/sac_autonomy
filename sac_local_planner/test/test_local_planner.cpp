@@ -81,7 +81,9 @@ LocalPlanner planner()
   return LocalPlanner(lattice, costs, Footprint{}, SpeedLimits{});
 }
 
-PlanningContext at(const ReferencePath & route, double s, double d, double speed, const DistanceMap * obstacles)
+PlanningContext at(
+  const ReferencePath & route, double s, double d, double speed, const DistanceMap * obstacles,
+  const std::vector<MovingObject> * moving = nullptr)
 {
   PlanningContext c;
   c.route = &route;
@@ -92,6 +94,7 @@ PlanningContext at(const ReferencePath & route, double s, double d, double speed
   c.d = d;
   c.speed = speed;
   c.obstacles = obstacles;
+  c.moving = moving;
   return c;
 }
 }  // namespace
@@ -189,4 +192,73 @@ TEST(LocalPlanner, SpeedProfileBrakesAndAccelerates)
     EXPECT_LE(v[i] * v[i] - v[i - 1] * v[i - 1], 2 * 2.0 * c.step + 1e-9);
     EXPECT_GE(v[i] * v[i] - v[i - 1] * v[i - 1], -2 * 4.0 * c.step - 1e-9);
   }
+}
+
+TEST(LocalPlanner, YieldsToAPersonCrossing)
+{
+  // The car at 8 m/s; a person 5 m right of the route 22 m ahead, walking across at 1.4 m/s:
+  // they meet in about 3 s
+  const ReferencePath route = straight();
+  const DistanceMap empty = obstaclesAt({});
+  std::vector<MovingObject> people = {{Eigen::Vector2d(32.0, -5.0), Eigen::Vector2d(0.0, 1.4), 0.35, 0.15}};
+  const PlanResult r = planner().plan(at(route, 10.0, 0.0, 8.0, &empty, &people));
+  ASSERT_GE(r.chosen, 0);
+  EXPECT_TRUE(r.stopping);
+  const Candidate & c = r.candidates[r.chosen];
+  EXPECT_TRUE(c.blocked_by_moving);
+  EXPECT_LT(c.blocked_at, 22.0);  // before where they cross
+  // Without them: on along the route
+  EXPECT_FALSE(planner().plan(at(route, 10.0, 0.0, 8.0, &empty)).stopping);
+}
+
+TEST(LocalPlanner, DrivesOnOnceThePersonHasCrossed)
+{
+  // Stopped before the crossing; the person has left the corridor (4 m) and walks away
+  const ReferencePath route = straight();
+  const DistanceMap empty = obstaclesAt({});
+  std::vector<MovingObject> people = {{Eigen::Vector2d(22.0, 4.5), Eigen::Vector2d(0.0, 1.4), 0.35, 0.15}};
+  const PlanResult r = planner().plan(at(route, 10.0, 0.0, 0.0, &empty, &people));
+  ASSERT_GE(r.chosen, 0);
+  EXPECT_FALSE(r.stopping);
+  EXPECT_LE(r.candidates[r.chosen].target_d, 0.5);  // not further towards them
+}
+
+TEST(LocalPlanner, PassesAPersonWalkingAlongTheRoad)
+{
+  // Walking towards the car 2.5 m right of the route: the car keeps to the left of them
+  const ReferencePath route = straight();
+  const DistanceMap empty = obstaclesAt({});
+  std::vector<MovingObject> people = {{Eigen::Vector2d(35.0, -2.5), Eigen::Vector2d(-1.4, 0.0), 0.35, 0.15}};
+  const PlanResult r = planner().plan(at(route, 10.0, 0.0, 8.0, &empty, &people));
+  ASSERT_GE(r.chosen, 0);
+  EXPECT_FALSE(r.stopping);
+  EXPECT_GE(r.candidates[r.chosen].target_d, 0.5);
+}
+
+TEST(LocalPlanner, NoYieldToSomeoneTheCarIsPastBeforeTheyCome)
+{
+  // 12 m right of the route, 15 m ahead, walking towards it at 1.4 m/s: the corridor is 8 m
+  // away for them (5.6 s), the car at 10 m/s is there in 1.5 s
+  const ReferencePath route = straight();
+  const DistanceMap empty = obstaclesAt({});
+  std::vector<MovingObject> people = {{Eigen::Vector2d(25.0, -12.0), Eigen::Vector2d(0.0, 1.4), 0.35, 0.15}};
+  EXPECT_FALSE(planner().plan(at(route, 10.0, 0.0, 10.0, &empty, &people)).stopping);
+}
+
+TEST(LocalPlanner, NotYetMovingYieldsButIsNotDrivenAround)
+{
+  // Known only by its speed: yielded to when crossing ...
+  const ReferencePath route = straight();
+  const DistanceMap empty = obstaclesAt({});
+  MovingObject crossing{Eigen::Vector2d(32.0, -5.0), Eigen::Vector2d(0.0, 1.4), 0.35, 0.15};
+  crossing.moving = false;
+  std::vector<MovingObject> people = {crossing};
+  EXPECT_TRUE(planner().plan(at(route, 10.0, 0.0, 8.0, &empty, &people)).stopping);
+  // ... not taken for the candidates when walking along the road
+  MovingObject along{Eigen::Vector2d(35.0, -1.0), Eigen::Vector2d(-1.4, 0.0), 0.35, 0.15};
+  along.moving = false;
+  std::vector<MovingObject> walker = {along};
+  const PlanResult r = planner().plan(at(route, 10.0, 0.0, 8.0, &empty, &walker));
+  EXPECT_FALSE(r.stopping);
+  EXPECT_NEAR(r.candidates[r.chosen].target_d, 0.0, 1e-9);
 }

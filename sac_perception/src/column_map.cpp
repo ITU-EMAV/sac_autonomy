@@ -26,11 +26,11 @@ void ColumnMap::initialize(const Params & params, const GridGeometry & geometry,
   plane_ = std::make_unique<RollingGrid>(geometry.size, geometry.resolution);
   plane_->setRecenterDistance(geometry.recenter_distance);
   plane_->setGroundLevels(rules_.level_gap, rules_.ground_max_age);
+  plane_->setFreeSpace(readFreeSpace(params));
   columns_.assign(static_cast<std::size_t>(plane_->width()) * plane_->width(), Column{});
   blocks_ = (plane_->width() + kBlock - 1) / kBlock;
   block_full_.assign(static_cast<std::size_t>(blocks_) * blocks_, 0);
   block_seen_.assign(static_cast<std::size_t>(blocks_) * blocks_, -1.0f);
-  block_free_.assign(static_cast<std::size_t>(blocks_) * blocks_, -std::numeric_limits<float>::infinity());
 }
 
 void ColumnMap::markBlocks()
@@ -86,7 +86,6 @@ void ColumnMap::recenter(double x, double y)
   }
   columns_.swap(moved);
   std::fill(block_seen_.begin(), block_seen_.end(), -1.0f);  // the blocks moved: seen again next scan
-  std::fill(block_free_.begin(), block_free_.end(), -std::numeric_limits<float>::infinity());
   markBlocks();
 }
 
@@ -120,6 +119,7 @@ void ColumnMap::raise(Element & element, const Eigen::Vector3f & p)
     element.source = static_cast<uint8_t>(source_index_);
   }
   element.time = now_;
+  element.dynamic = dynamic_;
   element.lo = std::min(element.lo, p.z());
   element.hi = std::max(element.hi, p.z());
 }
@@ -133,6 +133,7 @@ ColumnMap::Element & ColumnMap::make(Column & column, const Eigen::Vector3f & p)
   element.hit_scan = scan_counter_;
   element.iz = 0;
   element.source = static_cast<uint8_t>(source_index_);
+  element.dynamic = dynamic_;
   column.elements.push_back(element);
   return column.elements.back();
 }
@@ -179,9 +180,16 @@ void ColumnMap::insert(int source_index, const Scan & scan)
     }
     Column & column = columns_[plane_->index(i, j)];
     if (!ray.hit) {
-      column.free = now;  // the ground: nothing standing on it
+      plane_->observeFree(i, j, scan.time);  // the ground: nothing standing on it
     }
     if (ray.hit && ray.mark) {
+      // In the way (below the car's top over the ground the filter saw)? Then it occupies
+      // its cell; does it take one known free?
+      const bool in_way = !std::isfinite(ray.ground_z) || ray.end.z() - ray.ground_z < rules_.top;
+      dynamic_ = in_way && plane_->dynamicAt(ray.end.x(), ray.end.y());
+      if (in_way) {
+        plane_->observeOccupied(ray.end.x(), ray.end.y(), scan.time);
+      }
       add(column, ray.end);
       if (std::isfinite(ray.ground_z)) {
         column.estimated_ground = ray.ground_z;
@@ -192,6 +200,7 @@ void ColumnMap::insert(int source_index, const Scan & scan)
     }
   }
   markBlocks();
+  plane_->updateFreeSpace(scan.time);
   if (!memory_) {
     return;
   }
@@ -264,7 +273,6 @@ void ColumnMap::insert(int source_index, const Scan & scan)
         const int b = (cj / kBlock) * blocks_ + ci / kBlock;
         block_seen_[b] = now;
         if (!block_full_[b]) {  // nothing to lower in this block: to where the ray leaves it
-          block_free_[b] = now;
           const int bi = (ci / kBlock) * kBlock;
           const int bj = (cj / kBlock) * kBlock;
           const float exit_i = cx > 0 ? (bi + kBlock - x0) / cx : (cx < 0 ? (bi - x0) / cx : inf);
@@ -311,7 +319,7 @@ void ColumnMap::insert(int source_index, const Scan & scan)
             }
           }
           if (crossed) {
-            column.free = now;  // what was in the ray's way is not there now
+            plane_->observeFree(ci, cj, scan.time);  // what was in the ray's way is not there now
           }
           if (emptied) {
             forget(column);
@@ -501,14 +509,12 @@ void ColumnMap::recent(double since, std::vector<RecentPoint> & out) const
         looked = true;
       }
       if (rules_.blocks(g, element.lo, element.hi)) {
-        const float free = std::max(column.free, block_free_[(j / kBlock) * blocks_ + i / kBlock]);
         out.push_back(
           {Eigen::Vector2f(
               static_cast<float>(plane_->originX() + (i + 0.5) * res),
               static_cast<float>(plane_->originY() + (j + 0.5) * res)),
             std::isnan(g) ? std::numeric_limits<float>::quiet_NaN() : element.hi - g,
-            start_time_ + element.time,
-            std::isfinite(free) ? start_time_ + free : -std::numeric_limits<double>::infinity()});
+            start_time_ + element.time, element.dynamic != 0});
       }
     }
   });

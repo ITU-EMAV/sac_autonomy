@@ -34,6 +34,7 @@ def nodes(context):
             remappings=[
                 ("path", "/sac/planning/path"),
                 ("grid", "/sac/perception/grid"),
+                ("objects", "/sac/perception/objects"),
                 ("~/trajectory", "/sac/planning/trajectory"),
                 ("~/candidates", "/sac/planning/candidates"),
                 ("~/timing", "/sac/planning/timing"),

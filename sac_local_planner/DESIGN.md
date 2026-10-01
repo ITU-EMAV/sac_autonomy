@@ -65,3 +65,24 @@ side around an obstacle.
 **A closed road** (`blocked`: a 20 m wall across the track 150 m after the start): from
 10 m/s the car stops with 3.8 m between its body and the wall (stop_margin 3 m + the 0.3 m
 safety margin), no collision.
+
+## Moving objects: yielding to people crossing
+The grid shows where things are; for what moves (`/sac/perception/objects`, the ones called
+moving, held 1.5 s after they were last seen so: a track may drop out for a moment) the
+planner looks at where they will be:
+- each candidate is driven in time with its free speed profile; a point collides where a
+  moving object, going on at its velocity, comes within the footprint, its own radius, 0.5 m
+  and its growing uncertainty (0.3 m/s, at most 1.5 m) within 1 s of when the car would be
+  there, up to 6 s ahead: one walking along the road is passed on its free side
+- yielding: one moving across the route (faster than 0.3 m/s across it) that is in the
+  corridor (4 m each side) or enters it before the car could be there blocks every candidate
+  where it crosses: the car stops `stop_margin` before, and drives on once they have left
+  the corridor; it does not swerve in front of them
+Unit tests: yields to a person crossing 22 m ahead, drives on once they have left the
+corridor, passes one walking towards it along the road, does not stop for one who comes after
+the car is past.
+
+`pedestrians:=crossing` (gazebo_environment), four people crossing as the car comes 35-40 m
+near, a lap (perception's DESIGN.md for how they are found): the car stopped before each of
+the walkers 4.4-5.9 m away from them, and slowed for the runner (2.5 m/s), passing 7.5 m
+behind; 2 stops (2.2 s) with nobody within 30 m.

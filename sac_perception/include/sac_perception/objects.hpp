@@ -27,6 +27,8 @@ namespace sac_perception
 
 /// What a cluster looks like by its size
 enum class ObjectClass : uint8_t { kUnknown = 0, kPedestrian = 1, kVehicle = 2, kSmall = 3, kStructure = 4 };
+/// Its shape, by its class (sac_perception_msgs/TrackedObject)
+enum class ObjectShape : uint8_t { kBox = 0, kCylinder = 1, kPolygons = 2 };
 
 struct Cluster
 {
@@ -38,7 +40,9 @@ struct Cluster
   int points = 0;
   double time = 0.0;                   // [s] its newest point's
   ObjectClass classification = ObjectClass::kUnknown;
-  float fresh = 0.0f;                  // the share of its points on cells seen free just before
+  float fresh = 0.0f;                  // the share of its points taking cells known free
+  ObjectShape shape = ObjectShape::kBox;
+  std::vector<std::vector<Eigen::Vector2f>> footprint;  // kPolygons: convex, their union
 };
 
 class Clusterer
@@ -49,9 +53,20 @@ public:
   virtual void cluster(const std::vector<RecentPoint> & points, std::vector<Cluster> & out) = 0;
 };
 
+/// Its shape by its class, after Autoware's shape_estimation:
+///   vehicle               a rectangle fitted to its L shape: the direction whose rectangle has
+///                         the points closest to its edges (Zhang et al., "Efficient L-Shape
+///                         Fitting for Vehicle Detection Using Laser Scanners", IV 2017; the
+///                         closeness criterion, 1 degree steps): a car seen from a corner gets
+///                         its sides' directions, where the points' main direction is the
+///                         diagonal
+///   pedestrian, small     the smallest circle around it (Welzl): centre and diameter
+///   unknown               its convex hull
+///   structure             the convex hulls of its pieces in 2 m tiles: a wall along a bend is
+///                         drawn along the bend, not as one box over the road inside it
 /// Points closer than `tolerance` [m] (0.4) to each other (through others) are one cluster;
 /// clusters of fewer than `min_points` (2) are dropped. `fresh`: the share of its points
-/// whose cells were seen free within `free_window` [s] (1.0) before they were taken. Each gets the box of its points along
+/// that took cells known free with high confidence (RecentPoint::dynamic). Each gets the box of its points along
 /// their main direction (PCA), and a class by its size:
 ///   structure   longer than `max_object_size` [m] (8): a wall, a slope, a hedge
 ///   small       lower than 0.8 m
@@ -67,7 +82,6 @@ private:
   float tolerance_ = 0.4f;
   int min_points_ = 2;
   float max_object_size_ = 8.0f;
-  float free_window_ = 1.0f;
   std::vector<int> parent_;
 };
 
@@ -105,11 +119,14 @@ public:
 /// no track starts one. A track is `confirmed` after `confirm_hits` (3) scans and dropped
 /// `max_unseen` [s] (0.5) after it was last seen (a tentative one after `tentative_unseen`,
 /// 0.2). It is `moving` once confirmed, with its speed over `moving_speed` [m/s] (0.5) and
-/// the speed's 2-sigma bound over half of it, and, after Wang et al.'s free-space test
-/// (DATMO, IJRR 2007), when it has kept taking cells seen free just before: clusters with at
-/// least `min_fresh` (0.1) of fresh points, update after update for `fresh_time` [s] (0.3).
+/// the speed's 2-sigma bound over half of it, and when it has kept taking cells known free
+/// with high confidence (Dynablox's test, grid.hpp FreeSpaceParams): clusters with at least
+/// `min_fresh` (0.1) of such points, update after update for `fresh_time` [s] (0.3).
 /// A long static thing seen in part (a barrier cut by one lidar ring, sliding along it as
-/// the car drives) has a moving centre but takes no cell that was free. A cluster much
+/// the car drives) has a moving centre but takes no cell that was free. The free cells are
+/// needed in a row to start moving; once moving, a track stays so while it is faster than
+/// moving_speed and took fresh cells within the last 1.5 s (no flicker scan by scan). The
+/// planner yields to a small object with a sure speed without waiting for this. A cluster much
 /// longer than wide is trusted across, hardly along (its ends are where the view ends). A cluster is used once: a grid published at
 /// 20 Hz holds a 10 Hz lidar's scan twice, a track takes a cluster only if it is newer than
 /// its last. Structures are followed for their place, with no speed.

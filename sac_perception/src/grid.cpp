@@ -20,6 +20,9 @@ RollingGrid::RollingGrid(double size, double resolution)
   }
   hit_scan_.assign(static_cast<std::size_t>(width_) * width_, 0);
   free_time_.assign(static_cast<std::size_t>(width_) * width_, -std::numeric_limits<double>::infinity());
+  occupied_time_.assign(static_cast<std::size_t>(width_) * width_, -std::numeric_limits<double>::infinity());
+  occupied_since_.assign(static_cast<std::size_t>(width_) * width_, -std::numeric_limits<double>::infinity());
+  ever_free_.assign(static_cast<std::size_t>(width_) * width_, 0);
   ground_z_.assign(static_cast<std::size_t>(width_) * width_, std::numeric_limits<float>::quiet_NaN());
   ground_time_.assign(static_cast<std::size_t>(width_) * width_, 0.0);
 }
@@ -127,17 +130,92 @@ void RollingGrid::recenter(double x, double y)
   }
   shift(hit_scan_, uint32_t{0});
   shift(free_time_, -std::numeric_limits<double>::infinity());
+  shift(occupied_time_, -std::numeric_limits<double>::infinity());
+  shift(occupied_since_, -std::numeric_limits<double>::infinity());
+  shift(ever_free_, uint8_t{0});
   shift(ground_z_, std::numeric_limits<float>::quiet_NaN());
   shift(ground_time_, 0.0);
   origin_x_ += di * resolution_;
   origin_y_ += dj * resolution_;
 }
 
-double RollingGrid::lastFree(double x, double y) const
+void RollingGrid::observeOccupied(double x, double y, double time)
 {
   int i = 0;
   int j = 0;
-  return cell(x, y, i, j) ? free_time_[index(i, j)] : -std::numeric_limits<double>::infinity();
+  if (!cell(x, y, i, j)) {
+    return;
+  }
+  const int k = index(i, j);
+  if (time - occupied_time_[k] > free_space_.sparsity) {
+    occupied_since_[k] = time;  // a new stretch of occupancy
+  }
+  occupied_time_[k] = std::max(occupied_time_[k], time);
+  if (ever_free_[k] && time - occupied_since_[k] >= free_space_.static_after) {
+    // Something has come to stay: no longer free, nor its neighbours
+    for (int dj = -1; dj <= 1; ++dj) {
+      for (int di = -1; di <= 1; ++di) {
+        if (i + di >= 0 && j + dj >= 0 && i + di < width_ && j + dj < width_) {
+          ever_free_[index(i + di, j + dj)] = 0;
+        }
+      }
+    }
+  }
+}
+
+void RollingGrid::observeFree(int i, int j, double time)
+{
+  if (i >= 0 && j >= 0 && i < width_ && j < width_) {
+    double & f = free_time_[index(i, j)];
+    f = std::max(f, time);
+  }
+}
+
+void RollingGrid::updateFreeSpace(double time)
+{
+  // A cell seen free since it was last occupied, and not occupied for burn_in ...
+  const std::size_t n = ever_free_.size();
+  candidate_.resize(n);
+  for (std::size_t k = 0; k < n; ++k) {
+    candidate_[k] = std::isfinite(free_time_[k]) && free_time_[k] > occupied_time_[k] &&
+      time - occupied_time_[k] >= free_space_.burn_in;
+  }
+  // ... with all its neighbours so: ever-free (a 3 x 3 minimum)
+  for (int j = 1; j < width_ - 1; ++j) {
+    for (int i = 1; i < width_ - 1; ++i) {
+      const int k = index(i, j);
+      if (ever_free_[k] || !candidate_[k]) {
+        continue;
+      }
+      bool all = true;
+      for (int dj = -1; dj <= 1 && all; ++dj) {
+        for (int di = -1; di <= 1; ++di) {
+          if (!candidate_[index(i + di, j + dj)]) {
+            all = false;
+            break;
+          }
+        }
+      }
+      ever_free_[k] = all;
+    }
+  }
+}
+
+bool RollingGrid::dynamicAt(double x, double y) const
+{
+  int i = 0;
+  int j = 0;
+  if (!cell(x, y, i, j)) {
+    return false;
+  }
+  for (int dj = -1; dj <= 1; ++dj) {
+    for (int di = -1; di <= 1; ++di) {
+      if (i + di >= 0 && j + dj >= 0 && i + di < width_ && j + dj < width_ && ever_free_[index(i + di, j + dj)]) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool RollingGrid::cell(double x, double y, int & i, int & j) const
@@ -163,6 +241,7 @@ void RollingGrid::integrate(int layer_index, const Scan & scan)
   int j = 0;
   for (const Ray & ray : scan.rays) {
     if (ray.hit && ray.mark && cell(ray.end.x(), ray.end.y(), i, j)) {
+      observeOccupied(ray.end.x(), ray.end.y(), scan.time);
       const int k = index(i, j);
       if (hit_scan_[k] != scan_counter_) {
         hit_scan_[k] = scan_counter_;
@@ -246,6 +325,7 @@ void RollingGrid::integrate(int layer_index, const Scan & scan)
       }
     }
   }
+  updateFreeSpace(scan.time);
 }
 
 void RollingGrid::set(int layer, double x, double y, float log_odds)

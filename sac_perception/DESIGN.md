@@ -230,7 +230,35 @@ within 25 m of the car:
 | id switches (34 obstacles) | 61 | 60 |
 | messages with a `moving` object | 56 % (1083 ids) | 20 % (271 ids) |
 
-Everything in this lap stands still, so every `moving` object is false. What is left are
+Everything in this lap stands still, so every `moving` object is false.
+
+### People crossing, and free space with high confidence
+`pedestrians:=crossing` (gazebo_environment `walk_pedestrians`: cylinders moved through
+set_pose) has four people crossing 12-16 m of road, at 1.0-2.5 m/s, starting when the car is
+35-40 m away; the local planner yields (its DESIGN.md). Two lessons on the way:
+- "seen free in the last second" (above) came too late for one of them: 25 m out the 16-beam
+  lidar sees the road in rings, not every second; widening the window let more slopes in, and
+  a stop-gap rule in the planner (yield to small objects with a sure speed) made the car stop
+  for them (8-15 times a lap); the objects around those stops (size, height, speed, its
+  certainty, age) were not told apart from the people by any threshold
+- after Dynablox (Schmid et al., RA-L 2023): free space known with high confidence, with no
+  time limit. A cell is ever-free once it and its 8 neighbours were seen free after they were
+  last occupied and not occupied for 0.5 s (`map.free_space.burn_in`; occupied observations
+  0.2 s apart are one, `sparsity`); it stays so until occupied 1 s in a row (`static_after`:
+  something came to stay). A point taking an ever-free cell, or one next to it, moved there;
+  a cluster with such points, update after update for 0.3 s, is moving. The road is seen free
+  again and again over a lap, so the moment a person steps onto it counts
+
+| Crossing lap, planner on | "recently free" + the stop-gap rule | ever-free (Dynablox) |
+|---|---|---|
+| person first `moving`, car this far | 15.6-29.8 m | 21.1-29.9 m |
+| closest, car's body to the person | 4.25-7.57 m | 4.36-7.52 m |
+| stops with nobody within 30 m | 8-15 (10.8-21.7 s) | 2 (2.2 s) |
+
+On the `many` lap the share of messages with a false `moving` object is about the same (37 %;
+3 % within 4 m of the route): most are off the track, where the ground filter takes a ring
+across a grassy slope for an obstacle on cells seen free before; the ground filter's errors on
+slopes, not the free space, are left for those. What is left are
 mostly thin clusters 17-32 m away, 1-2 m high: slopes and growth beside the track, whose cells
 were seen free a moment before (the last scan's rays ran low over them). Poles are classed
 pedestrian (the same size). A parked car changes id as the car passes it (the side it shows

@@ -11,13 +11,145 @@
 namespace sac_perception
 {
 
+namespace
+{
+/// Convex hull, counter-clockwise (Andrew's monotone chain); a point or two as they are
+std::vector<Eigen::Vector2f> convexHull(std::vector<Eigen::Vector2f> p)
+{
+  std::sort(p.begin(), p.end(), [](const Eigen::Vector2f & a, const Eigen::Vector2f & b) {
+    return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y());
+  });
+  p.erase(std::unique(p.begin(), p.end()), p.end());
+  if (p.size() < 3) {
+    return p;
+  }
+  auto cross = [](const Eigen::Vector2f & o, const Eigen::Vector2f & a, const Eigen::Vector2f & b) {
+    return (a.x() - o.x()) * (b.y() - o.y()) - (a.y() - o.y()) * (b.x() - o.x());
+  };
+  std::vector<Eigen::Vector2f> h(2 * p.size());
+  std::size_t k = 0;
+  for (std::size_t i = 0; i < p.size(); ++i) {
+    while (k >= 2 && cross(h[k - 2], h[k - 1], p[i]) <= 0.0f) {
+      --k;
+    }
+    h[k++] = p[i];
+  }
+  for (std::size_t i = p.size() - 1, t = k + 1; i-- > 0;) {
+    while (k >= t && cross(h[k - 2], h[k - 1], p[i]) <= 0.0f) {
+      --k;
+    }
+    h[k++] = p[i];
+  }
+  h.resize(k - 1);
+  return h;
+}
+
+/// The smallest circle around the points (Welzl, iteratively)
+void enclosingCircle(const std::vector<Eigen::Vector2f> & p, Eigen::Vector2f & centre, float & radius)
+{
+  auto inside = [&](const Eigen::Vector2f & q) { return (q - centre).norm() <= radius + 1e-4f; };
+  auto two = [&](const Eigen::Vector2f & a, const Eigen::Vector2f & b) {
+    centre = (a + b) / 2.0f;
+    radius = (a - b).norm() / 2.0f;
+  };
+  auto three = [&](const Eigen::Vector2f & a, const Eigen::Vector2f & b, const Eigen::Vector2f & c) {
+    const float d = 2.0f * (a.x() * (b.y() - c.y()) + b.x() * (c.y() - a.y()) + c.x() * (a.y() - b.y()));
+    if (std::abs(d) < 1e-9f) {  // in a line: the two furthest apart
+      two(a, b);
+      if (!inside(c)) {
+        two(a, c);
+      }
+      if (!inside(b)) {
+        two(b, c);
+      }
+      return;
+    }
+    const float a2 = a.squaredNorm(), b2 = b.squaredNorm(), c2 = c.squaredNorm();
+    centre = Eigen::Vector2f(
+      (a2 * (b.y() - c.y()) + b2 * (c.y() - a.y()) + c2 * (a.y() - b.y())) / d,
+      (a2 * (c.x() - b.x()) + b2 * (a.x() - c.x()) + c2 * (b.x() - a.x())) / d);
+    radius = (a - centre).norm();
+  };
+  centre = p.empty() ? Eigen::Vector2f::Zero() : p[0];
+  radius = 0.0f;
+  for (std::size_t i = 1; i < p.size(); ++i) {
+    if (inside(p[i])) {
+      continue;
+    }
+    centre = p[i];
+    radius = 0.0f;
+    for (std::size_t j = 0; j < i; ++j) {
+      if (inside(p[j])) {
+        continue;
+      }
+      two(p[i], p[j]);
+      for (std::size_t k = 0; k < j; ++k) {
+        if (!inside(p[k])) {
+          three(p[i], p[j], p[k]);
+        }
+      }
+    }
+  }
+}
+
+/// A rectangle to an L shape: the direction (0-90 degrees) maximizing the closeness of the
+/// points to the rectangle's nearer edges (Zhang et al. 2017)
+void lShape(const std::vector<Eigen::Vector2f> & p, Eigen::Vector2f & centre, float & yaw, float & length, float & width)
+{
+  constexpr float kMinDistance = 0.01f;  // d0
+  float best = -1.0f;
+  float best_theta = 0.0f;
+  std::vector<float> c1(p.size()), c2(p.size());
+  for (int step = 0; step < 90; ++step) {
+    const float theta = static_cast<float>(step) * static_cast<float>(M_PI) / 180.0f;
+    const Eigen::Vector2f e1(std::cos(theta), std::sin(theta));
+    const Eigen::Vector2f e2(-e1.y(), e1.x());
+    float lo1 = std::numeric_limits<float>::infinity(), hi1 = -lo1, lo2 = lo1, hi2 = -lo1;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+      c1[i] = p[i].dot(e1);
+      c2[i] = p[i].dot(e2);
+      lo1 = std::min(lo1, c1[i]);
+      hi1 = std::max(hi1, c1[i]);
+      lo2 = std::min(lo2, c2[i]);
+      hi2 = std::max(hi2, c2[i]);
+    }
+    float closeness = 0.0f;
+    for (std::size_t i = 0; i < p.size(); ++i) {
+      const float d1 = std::min(hi1 - c1[i], c1[i] - lo1);
+      const float d2 = std::min(hi2 - c2[i], c2[i] - lo2);
+      closeness += 1.0f / std::max(std::min(d1, d2), kMinDistance);
+    }
+    if (closeness > best) {
+      best = closeness;
+      best_theta = theta;
+    }
+  }
+  const Eigen::Vector2f e1(std::cos(best_theta), std::sin(best_theta));
+  const Eigen::Vector2f e2(-e1.y(), e1.x());
+  float lo1 = std::numeric_limits<float>::infinity(), hi1 = -lo1, lo2 = lo1, hi2 = -lo1;
+  for (const auto & q : p) {
+    lo1 = std::min(lo1, q.dot(e1));
+    hi1 = std::max(hi1, q.dot(e1));
+    lo2 = std::min(lo2, q.dot(e2));
+    hi2 = std::max(hi2, q.dot(e2));
+  }
+  centre = e1 * (lo1 + hi1) / 2.0f + e2 * (lo2 + hi2) / 2.0f;
+  length = hi1 - lo1;
+  width = hi2 - lo2;
+  yaw = best_theta;
+  if (width > length) {
+    std::swap(length, width);
+    yaw += static_cast<float>(M_PI) / 2.0f;
+  }
+}
+}  // namespace
+
 // ---------------------------------------------------------------- clustering
 void ConnectedComponents::initialize(const Params & params)
 {
   tolerance_ = static_cast<float>(params.getDouble("tolerance", tolerance_));
   min_points_ = static_cast<int>(params.getDouble("min_points", min_points_));
   max_object_size_ = static_cast<float>(params.getDouble("max_object_size", max_object_size_));
-  free_window_ = static_cast<float>(params.getDouble("free_window", free_window_));
 }
 
 void ConnectedComponents::cluster(const std::vector<RecentPoint> & points, std::vector<Cluster> & out)
@@ -84,7 +216,7 @@ void ConnectedComponents::cluster(const std::vector<RecentPoint> & points, std::
     int fresh = 0;
     for (int m : members) {
       mean += points[m].xy;
-      fresh += points[m].time - points[m].free <= free_window_;
+      fresh += points[m].dynamic;
       c.time = std::max(c.time, points[m].time);
       if (std::isfinite(points[m].top)) {
         c.height = std::isnan(c.height) ? points[m].top : std::max(c.height, points[m].top);
@@ -122,6 +254,42 @@ void ConnectedComponents::cluster(const std::vector<RecentPoint> & points, std::
       c.classification = ObjectClass::kPedestrian;
     } else if (c.length >= 2.5f && c.length <= 6.0f) {
       c.classification = ObjectClass::kVehicle;
+    }
+    // Its shape, by its class
+    std::vector<Eigen::Vector2f> xy(members.size());
+    for (std::size_t k = 0; k < members.size(); ++k) {
+      xy[k] = points[members[k]].xy;
+    }
+    switch (c.classification) {
+      case ObjectClass::kVehicle:
+        c.shape = ObjectShape::kBox;
+        lShape(xy, c.centre, c.yaw, c.length, c.width);
+        break;
+      case ObjectClass::kPedestrian:
+      case ObjectClass::kSmall: {
+        c.shape = ObjectShape::kCylinder;
+        float radius = 0.0f;
+        enclosingCircle(xy, c.centre, radius);
+        c.length = c.width = 2.0f * radius;
+        c.yaw = 0.0f;
+        break;
+      }
+      case ObjectClass::kStructure: {
+        c.shape = ObjectShape::kPolygons;
+        std::unordered_map<uint64_t, std::vector<Eigen::Vector2f>> tiles;
+        for (const auto & q : xy) {
+          tiles[key(static_cast<int64_t>(std::floor(q.x() / 2.0f)), static_cast<int64_t>(std::floor(q.y() / 2.0f)))]
+          .push_back(q);
+        }
+        for (auto & [k, tile] : tiles) {
+          (void)k;
+          c.footprint.push_back(convexHull(tile));
+        }
+        break;
+      }
+      default:
+        c.shape = ObjectShape::kPolygons;
+        c.footprint.push_back(convexHull(xy));
     }
     out.push_back(c);
   }
@@ -275,6 +443,11 @@ void KalmanTracker::update(const std::vector<Cluster> & clusters, double time)
   for (Track & track : tracks_) {
     const Eigen::Vector2f v = track.x.tail<2>();
     const float speed = v.norm();
+    if (track.moving && track.confirmed && track.last.classification != ObjectClass::kStructure &&
+      speed > moving_speed_ && track.fresh_last >= 0.0 && time - track.fresh_last <= 1.5)
+    {
+      continue;  // it keeps moving while it went on taking fresh cells lately
+    }
     track.moving = false;
     const bool fresh = track.fresh_last >= 0.0 && time - track.fresh_last <= 0.5 &&
       track.fresh_last - track.fresh_since >= fresh_time_ - 1e-6;

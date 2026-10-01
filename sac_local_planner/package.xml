@@ -24,6 +24,7 @@
   <depend>visualization_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>sac_planning_msgs</depend>
+  <depend>sac_perception_msgs</depend>
   <depend>sac_perception</depend>
 
   <exec_depend>launch_ros</exec_depend>

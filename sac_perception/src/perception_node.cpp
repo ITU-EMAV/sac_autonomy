@@ -280,6 +280,18 @@ void PerceptionNode::updateObjects(
     o.length = t.last.length;
     o.width = t.last.width;
     o.height = std::isfinite(t.last.height) ? t.last.height : 0.0f;
+    o.shape = static_cast<uint8_t>(t.last.shape);
+    for (const auto & polygon : t.last.footprint) {
+      geometry_msgs::msg::Polygon g;
+      for (const auto & q : polygon) {
+        geometry_msgs::msg::Point32 p;
+        p.x = q.x();
+        p.y = q.y();
+        p.z = static_cast<float>(z);
+        g.points.push_back(p);
+      }
+      o.footprint.push_back(g);
+    }
     o.age = static_cast<float>(time - t.first);
     o.hits = t.hits;
     objects.objects.push_back(o);
@@ -291,7 +303,8 @@ void PerceptionNode::updateObjects(
     box.header = objects.header;
     box.ns = "objects";
     box.id = static_cast<int>(count++);
-    box.type = visualization_msgs::msg::Marker::CUBE;
+    box.type = o.shape == sac_perception_msgs::msg::TrackedObject::CYLINDER ?
+      visualization_msgs::msg::Marker::CYLINDER : visualization_msgs::msg::Marker::CUBE;
     const float height = std::max(0.3f, o.height);
     box.pose.position.x = o.position.x;
     box.pose.position.y = o.position.y;
@@ -308,7 +321,43 @@ void PerceptionNode::updateObjects(
     box.color.g = o.moving ? 0.1f : c[1];
     box.color.b = o.moving ? 0.1f : c[2];
     box.color.a = 0.5f;
-    markers.markers.push_back(box);
+    if (o.shape == sac_perception_msgs::msg::TrackedObject::POLYGON) {
+      // Its outline at the ground and at its top
+      visualization_msgs::msg::Marker outline = box;
+      outline.type = visualization_msgs::msg::Marker::LINE_LIST;
+      outline.pose = geometry_msgs::msg::Pose();
+      outline.pose.orientation.w = 1.0;
+      outline.scale.x = 0.05;
+      outline.color.a = 0.9f;
+      for (const auto & polygon : o.footprint) {
+        const std::size_t n = polygon.points.size();
+        for (std::size_t k = 0; k < n; ++k) {
+          const auto & a = polygon.points[k];
+          const auto & b = polygon.points[(k + 1) % n];
+          for (double level : {z, z + height}) {
+            geometry_msgs::msg::Point pa, pb;
+            pa.x = a.x;
+            pa.y = a.y;
+            pa.z = level;
+            pb.x = b.x;
+            pb.y = b.y;
+            pb.z = level;
+            outline.points.push_back(pa);
+            outline.points.push_back(pb);
+          }
+          geometry_msgs::msg::Point up, down;
+          up.x = down.x = a.x;
+          up.y = down.y = a.y;
+          down.z = z;
+          up.z = z + height;
+          outline.points.push_back(down);
+          outline.points.push_back(up);
+        }
+      }
+      markers.markers.push_back(outline);
+    } else {
+      markers.markers.push_back(box);
+    }
     if (o.moving) {
       visualization_msgs::msg::Marker arrow = box;
       arrow.id = static_cast<int>(count++);

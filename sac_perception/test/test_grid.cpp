@@ -278,3 +278,43 @@ TEST(Grid, TheNearestGroundRingByRingIsTheNearest)
     }
   }
 }
+
+TEST(Grid, WhatTakesCellsKnownFreeIsMoving)
+{
+  // A road seen free scan after scan; a person stepping onto it is moving, a wall the rays
+  // always end on is not, and something that comes to stay stops being so
+  RollingGrid g(40.0, 0.2);
+  const int l = g.addLayer("lidar", LayerParams{});
+  g.recenter(0.0, 0.0);
+  double t = 10.0;
+  auto scan = [&](std::vector<Ray> rays) {
+    Scan s;
+    s.origin = Eigen::Vector3f(0.0f, 0.0f, 1.8f);
+    s.time = t;
+    s.clear_height = 0.3f;
+    s.rays = std::move(rays);
+    g.integrate(l, s);
+    t += 0.1;
+  };
+  std::vector<Ray> road;
+  for (float x : {11.65f, 12.05f, 12.45f}) {  // ground returns across the road, three cells deep
+    for (float y = -3.0f; y <= 3.0f; y += 0.1f) {
+      road.push_back(ray(x, y, 0.0f, false, 0.0f));
+    }
+  }
+  std::vector<Ray> with_wall = road;
+  with_wall.push_back(ray(12.05f, 6.05f, 1.0f, true, 0.0f));  // a wall beside it
+  for (int k = 0; k < 10; ++k) {
+    scan(with_wall);
+  }
+  EXPECT_TRUE(g.dynamicAt(12.05, 0.05));   // the road: known free
+  EXPECT_FALSE(g.dynamicAt(12.05, 6.05));  // the wall: never free
+  std::vector<Ray> person = road;
+  person.push_back(ray(12.05f, 0.05f, 1.0f, true, 0.0f));
+  scan(person);
+  EXPECT_TRUE(g.dynamicAt(12.05, 0.05));   // it took a free cell: moving
+  for (int k = 0; k < 12; ++k) {           // it stays 1.2 s: it came to stay
+    scan(person);
+  }
+  EXPECT_FALSE(g.dynamicAt(12.05, 0.05));
+}

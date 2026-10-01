@@ -41,6 +41,20 @@ struct Ray
   bool mark = true;           // a hit that is not marked still leaves its end cell alone
 };
 
+/// Free space known with high confidence, after Dynablox (Schmid et al., RA-L 2023): a cell
+/// is ever-free once it and its 8 neighbours were seen free after they were last occupied,
+/// and were not occupied for `burn_in` [s]; it stays so (however long ago that was) until it
+/// is occupied for `static_after` [s] in a row (something came to stay: it and its
+/// neighbours lose the label). Occupied observations up to `sparsity` [s] apart are one
+/// (a sparse sensor). A point taking an ever-free cell, or one next to it, must have moved
+/// there.
+struct FreeSpaceParams
+{
+  double burn_in = 0.5;       // [s] (Dynablox: 5 frames)
+  double sparsity = 0.2;      // [s] (2 frames)
+  double static_after = 1.0;  // [s]
+};
+
 struct Scan
 {
   Eigen::Vector3f origin{0.0f, 0.0f, 0.0f};  // sensor, in the grid frame
@@ -85,8 +99,15 @@ public:
   void decay(double dt);
 
   float logOdds(int layer, int i, int j) const { return layers_[layer].cells[index(i, j)]; }
-  /// When a ray last found the cell free [s] (-inf: never)
-  double lastFree(double x, double y) const;
+  /// High-confidence free space (FreeSpaceParams). integrate() observes its rays; other
+  /// representations call observeOccupied / observeFree themselves
+  void setFreeSpace(const FreeSpaceParams & params) { free_space_ = params; }
+  void observeOccupied(double x, double y, double time);
+  void observeFree(int i, int j, double time);
+  /// Labels the ever-free cells as of `time` (after a scan)
+  void updateFreeSpace(double time);
+  /// The cell or one of its neighbours is ever-free: what takes it is moving
+  bool dynamicAt(double x, double y) const;
 
   /// The shared ground height map: sources that find the ground (a 3D lidar's ground points)
   /// write it, sources that cannot tell the ground from an obstacle (a 2D lidar, whose plane
@@ -128,6 +149,11 @@ private:
   std::vector<Layer> layers_;
   std::vector<uint32_t> hit_scan_;  // per cell: last scan that hit it
   std::vector<double> free_time_;   // per cell: when a ray last found it free
+  std::vector<double> occupied_time_;   // per cell: when last occupied
+  std::vector<double> occupied_since_;  // per cell: since when occupied in a row
+  std::vector<uint8_t> ever_free_;
+  std::vector<uint8_t> candidate_;      // (scratch)
+  FreeSpaceParams free_space_;
   uint32_t scan_counter_ = 0;
   std::vector<float> ground_z_;      // NaN: never seen
   std::vector<double> ground_time_;  // [s] when

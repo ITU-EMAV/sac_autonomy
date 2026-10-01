@@ -34,6 +34,7 @@ struct Candidate
   std::vector<double> clearance;   // [m] footprint to the nearest obstacle at each point
   double min_clearance = std::numeric_limits<double>::infinity();
   double blocked_at = std::numeric_limits<double>::infinity();  // [m] along it, first collision
+  bool blocked_by_moving = false;  // the first collision is with a moving object
   // Filled by the costs
   double cost = 0.0;
   std::vector<std::pair<std::string, double>> costs;
@@ -72,6 +73,17 @@ struct DistanceMap
   }
 };
 
+/// Something moving (a person crossing), from the perception's objects, in the map frame
+struct MovingObject
+{
+  Eigen::Vector2d position = Eigen::Vector2d::Zero();
+  Eigen::Vector2d velocity = Eigen::Vector2d::Zero();  // [m/s]
+  double radius = 0.5;   // [m] its box's half diagonal
+  double sigma = 0.2;    // [m] its position's uncertainty (1 sigma)
+  bool moving = true;    // the perception calls it moving; else only its speed is known, enough
+                         // to yield to a small one crossing, not to drive around it
+};
+
 /// Everything a generator or a cost function may use
 struct PlanningContext
 {
@@ -82,6 +94,7 @@ struct PlanningContext
   double d = 0.0;
   double heading_error = 0.0;      // ego yaw - route yaw at s
   const DistanceMap * obstacles = nullptr;
+  const std::vector<MovingObject> * moving = nullptr;  // none: only the grid
   double previous_target_d = 0.0;  // of the last chosen candidate
   bool has_previous = false;
 };
