@@ -26,7 +26,9 @@ namespace sac_perception
 /// A point cloud on its way through the filters, in base_footprint.
 struct Cloud
 {
-  enum Label : uint8_t { kObstacle = 0, kGround = 1, kDropped = 2 };
+  /// kUnmarked: not known to be an obstacle (no ground known under it): clears the space
+  /// before it, is not marked
+  enum Label : uint8_t { kObstacle = 0, kGround = 1, kDropped = 2, kUnmarked = 3 };
 
   Eigen::Vector3f origin{0.0f, 0.0f, 0.0f};  // the sensor
   std::vector<Eigen::Vector3f> points;

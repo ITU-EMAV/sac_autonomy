@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstring>
 #include <stdexcept>
 
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -177,6 +178,10 @@ void GridSource::skip()
 // ---------------------------------------------------------------- point cloud
 void PointCloudSource::configure(const RosParams & params)
 {
+  ground_from_map_ = params.getBool("ground_from_map", ground_from_map_);
+  if (ground_from_map_ && ground_margin_ < 0.0) {
+    ground_margin_ = 0.2;
+  }
   clear_height_ = static_cast<float>(params.getDouble("clear_height", clear_height_));
   max_clear_range_ = static_cast<float>(params.getDouble("max_clear_range", max_clear_range_));
   clear_ = params.getBool("clear", clear_);
@@ -254,6 +259,40 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
     intensity.resize(count);
     cloud.intensity = std::move(intensity);
   }
+  process(cloud, message->header, *base, stamp, start);
+}
+
+void PointCloudSource::groundFromMap(Cloud & cloud, const Eigen::Isometry3f & base, double time) const
+{
+  std::lock_guard<std::mutex> lock(context_.map->mutex);
+  const MapRepresentation & map = *context_.map->map;
+  for (std::size_t k = 0; k < cloud.size(); ++k) {
+    if (cloud.labels[k] == Cloud::kDropped) {
+      continue;
+    }
+    const Eigen::Vector3f p = base * cloud.points[k];
+    float ground = 0.0f;
+    if (map.groundNear(p.x(), p.y(), ground_search_radius_, time, ground_max_age_, ground)) {
+      const float height = p.z() - ground;
+      cloud.ground_z[k] = cloud.points[k].z() - height;  // the same height over it in base_footprint
+      if (height < ground_margin_) {
+        cloud.labels[k] = Cloud::kGround;
+      }
+    } else {
+      cloud.labels[k] = Cloud::kUnmarked;
+    }
+  }
+}
+
+void PointCloudSource::process(
+  Cloud & cloud, const std_msgs::msg::Header & header, const Eigen::Isometry3f & base_transform,
+  const rclcpp::Time & stamp, std::chrono::steady_clock::time_point start)
+{
+  const Eigen::Isometry3f * base = &base_transform;
+  const std::size_t count = cloud.size();
+  if (ground_from_map_) {
+    groundFromMap(cloud, *base, stamp.seconds());
+  }
   diagnostics_.clear();
   for (std::size_t f = 0; f < filters_.size(); ++f) {
     filters_[f]->apply(cloud);
@@ -262,9 +301,9 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
     }
   }
   if (debug_publisher_) {
-    std_msgs::msg::Header header = message->header;
-    header.frame_id = context_.base_frame;
-    publishDebug(cloud, header);
+    std_msgs::msg::Header debug_header = header;
+    debug_header.frame_id = context_.base_frame;
+    publishDebug(cloud, debug_header);
   }
 
   // Rays in the grid frame
@@ -280,7 +319,8 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
     }
     Ray ray;
     ray.end = *base * cloud.points[k];
-    ray.hit = cloud.labels[k] == Cloud::kObstacle;
+    ray.hit = cloud.labels[k] == Cloud::kObstacle || cloud.labels[k] == Cloud::kUnmarked;
+    ray.mark = cloud.labels[k] != Cloud::kUnmarked;
     if (!ray.hit && !clear_) {
       continue;
     }
@@ -328,6 +368,96 @@ void PointCloudSource::publishDebug(const Cloud & cloud, const std_msgs::msg::He
     *height = std::isnan(cloud.ground_z[k]) ? std::numeric_limits<float>::quiet_NaN() : p.z() - cloud.ground_z[k];
   }
   debug_publisher_->publish(out);
+}
+
+// ---------------------------------------------------------------- depth image
+void DepthImageSource::configure(const RosParams & params)
+{
+  PointCloudSource::configure(params);
+  stride_ = std::max(1, static_cast<int>(params.getDouble("stride", stride_)));
+  min_depth_ = static_cast<float>(params.getDouble("min_depth", min_depth_));
+  max_depth_ = static_cast<float>(params.getDouble("max_depth", max_depth_));
+  info_topic_ = params.getString("camera_info", "");
+}
+
+void DepthImageSource::subscribe(const std::string & topic)
+{
+  std::string info = info_topic_;
+  if (info.empty()) {
+    const std::size_t slash = topic.rfind('/');
+    info = (slash == std::string::npos ? std::string() : topic.substr(0, slash + 1)) + "camera_info";
+  }
+  info_subscription_ = context_.node->create_subscription<sensor_msgs::msg::CameraInfo>(
+    info, rclcpp::SensorDataQoS(), [this](const sensor_msgs::msg::CameraInfo::ConstSharedPtr & m) {
+      std::lock_guard<std::mutex> lock(info_mutex_);
+      info_ = m;
+    });
+  image_subscription_ = context_.node->create_subscription<sensor_msgs::msg::Image>(
+    topic, rclcpp::SensorDataQoS(), [this](const sensor_msgs::msg::Image::ConstSharedPtr & m) {
+      defer(m->header.frame_id, rclcpp::Time(m->header.stamp), [this, m]() { onImage(m); });
+    });
+}
+
+void DepthImageSource::onImage(const sensor_msgs::msg::Image::ConstSharedPtr & message)
+{
+  const rclcpp::Time stamp(message->header.stamp);
+  if (tooOld(stamp)) {
+    skip();
+    return;
+  }
+  sensor_msgs::msg::CameraInfo::ConstSharedPtr info;
+  {
+    std::lock_guard<std::mutex> lock(info_mutex_);
+    info = info_;
+  }
+  const bool metres = message->encoding == "32FC1";
+  const bool millimetres = message->encoding == "16UC1" || message->encoding == "mono16";
+  if (!info || info->k[0] <= 0.0 || info->k[4] <= 0.0 || (!metres && !millimetres)) {
+    RCLCPP_WARN_THROTTLE(
+      context_.node->get_logger(), *context_.node->get_clock(), 5000,
+      "%s: no camera_info yet, or a depth encoding other than 32FC1/16UC1 ('%s')", name_.c_str(),
+      message->encoding.c_str());
+    skip();
+    return;
+  }
+  const auto start = Clock::now();
+  const auto sensor = sensorInBase(message->header.frame_id, stamp);
+  const auto base = baseInGrid(stamp);
+  if (!sensor || !base) {
+    skip();
+    return;
+  }
+  // Back-projection: the optical frame (z forward, x right, y down)
+  const float fx = static_cast<float>(info->k[0]);
+  const float fy = static_cast<float>(info->k[4]);
+  const float cx = static_cast<float>(info->k[2]);
+  const float cy = static_cast<float>(info->k[5]);
+  const int w = static_cast<int>(message->width);
+  const int h = static_cast<int>(message->height);
+  Cloud cloud;
+  cloud.origin = sensor->translation();
+  cloud.points.reserve(static_cast<std::size_t>((w / stride_ + 1) * (h / stride_ + 1)));
+  for (int v = stride_ / 2; v < h; v += stride_) {
+    const uint8_t * row = message->data.data() + static_cast<std::size_t>(v) * message->step;
+    for (int u = stride_ / 2; u < w; u += stride_) {
+      float d = 0.0f;
+      if (metres) {
+        std::memcpy(&d, row + 4 * u, 4);
+      } else {
+        uint16_t mm = 0;
+        std::memcpy(&mm, row + 2 * u, 2);
+        d = mm * 0.001f;
+      }
+      if (!std::isfinite(d) || d < min_depth_ || d > max_depth_) {
+        continue;  // no return, or beyond what the depth is good for
+      }
+      cloud.points.push_back(*sensor * Eigen::Vector3f((u - cx) * d / fx, (v - cy) * d / fy, d));
+    }
+  }
+  const std::size_t n = cloud.points.size();
+  cloud.labels.assign(n, Cloud::kObstacle);
+  cloud.ground_z.assign(n, std::numeric_limits<float>::quiet_NaN());
+  process(cloud, message->header, *base, stamp, start);
 }
 
 // ---------------------------------------------------------------- laser scan

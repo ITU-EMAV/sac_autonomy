@@ -5,6 +5,7 @@ Arguments:
   config:=sim           config/<config>.yaml
   map:=sparse_voxel     another map representation: config/map_<map>.yaml over it
                         (default: the config's, direct_projection)
+  camera:=true          the front camera's depth too (config/camera.yaml)
 
   ros2 launch sac_perception perception.launch.py use_sim_time:=true
 """
@@ -23,6 +24,8 @@ def nodes(context):
     config = LaunchConfiguration("config").perform(context)
     use_sim_time = LaunchConfiguration("use_sim_time").perform(context).lower() == "true"
     parameters = [os.path.join(share, "config", f"{config}.yaml")]
+    if LaunchConfiguration("camera").perform(context).lower() == "true":
+        parameters.append(os.path.join(share, "config", "camera.yaml"))
     representation = LaunchConfiguration("map").perform(context)
     if representation:
         parameters.append(os.path.join(share, "config", f"map_{representation}.yaml"))
@@ -48,6 +51,7 @@ def generate_launch_description():
             DeclareLaunchArgument("use_sim_time", default_value="false"),
             DeclareLaunchArgument("config", default_value="sim"),
             DeclareLaunchArgument("map", default_value=""),
+            DeclareLaunchArgument("camera", default_value="false"),
             OpaqueFunction(function=nodes),
         ]
     )

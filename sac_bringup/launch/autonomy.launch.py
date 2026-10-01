@@ -10,6 +10,8 @@ Arguments:
                        (/sac/perception/grid) from the lidars
   perception_map:=sparse_voxel
                        the perception's map representation (default: direct_projection)
+  perception_camera:=true
+                       the perception uses the front camera's depth too
   local_planner:=true  drive around obstacles: sac_local_planner follows the route around
                        the grid's obstacles (or stops before them) and the controller drives
                        its trajectory; starts the perception too
@@ -64,7 +66,11 @@ def nodes(context):
             include(
                 "sac_perception",
                 "perception.launch.py",
-                {"use_sim_time": sim_time, "map": LaunchConfiguration("perception_map").perform(context)},
+                {
+                    "use_sim_time": sim_time,
+                    "map": LaunchConfiguration("perception_map").perform(context),
+                    "camera": LaunchConfiguration("perception_camera").perform(context),
+                },
             )
         )
     if local_planner:
@@ -118,6 +124,7 @@ def generate_launch_description():
             DeclareLaunchArgument("perception", default_value="false"),
             DeclareLaunchArgument("local_planner", default_value="false"),
             DeclareLaunchArgument("perception_map", default_value=""),
+            DeclareLaunchArgument("perception_camera", default_value="false"),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(get_package_share_directory("sac_localization"), "launch", "localization.launch.py")

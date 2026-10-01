@@ -230,3 +230,51 @@ TEST(Grid, DirectProjectionIsTheGridOfStageOne)
   EXPECT_EQ(map.project(), g.combined());
   EXPECT_DOUBLE_EQ(map.originX(), g.originX());
 }
+
+TEST(Grid, TheNearestGroundRingByRingIsTheNearest)
+{
+  // Ground in scattered cells; the ring search finds a cell as near as any (brute force)
+  RollingGrid g(40.0, 0.2);
+  g.recenter(0.0, 0.0);
+  std::mt19937 rng(7);
+  std::uniform_real_distribution<float> xy(-19.0f, 19.0f);
+  std::vector<Eigen::Vector2f> cells;
+  for (int k = 0; k < 300; ++k) {
+    const Eigen::Vector2f p(xy(rng), xy(rng));
+    g.setGround(p.x(), p.y(), 0.01f * k, 10.0);
+    cells.push_back(p);
+  }
+  for (int k = 0; k < 2000; ++k) {
+    const double x = xy(rng);
+    const double y = xy(rng);
+    int ci = 0, cj = 0;
+    g.cell(x, y, ci, cj);
+    int best = std::numeric_limits<int>::max();
+    for (const auto & p : cells) {
+      int i = 0, j = 0;
+      g.cell(p.x(), p.y(), i, j);
+      const int d2 = (i - ci) * (i - ci) + (j - cj) * (j - cj);
+      if (d2 <= 10 * 10) {
+        best = std::min(best, d2);
+      }
+    }
+    float z = 0.0f;
+    const bool found = g.groundNear(x, y, 2.0, 10.0, 3.0, z);
+    ASSERT_EQ(found, best != std::numeric_limits<int>::max()) << x << ", " << y;
+    if (found) {
+      // the cell it took is as near as the nearest
+      int nearest = std::numeric_limits<int>::max();
+      for (std::size_t c = 0; c < cells.size(); ++c) {
+        int i = 0, j = 0;
+        g.cell(cells[c].x(), cells[c].y(), i, j);
+        const int d2 = (i - ci) * (i - ci) + (j - cj) * (j - cj);
+        float zc = 0.0f;
+        g.groundNear(cells[c].x(), cells[c].y(), 0.0, 10.0, 3.0, zc);
+        if (std::abs(zc - z) < 1e-6f) {
+          nearest = std::min(nearest, d2);
+        }
+      }
+      EXPECT_EQ(nearest, best) << x << ", " << y;
+    }
+  }
+}

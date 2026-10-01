@@ -1,0 +1,34 @@
+# Over sim.yaml (perception.launch.py camera:=true): the front camera's depth as a source too
+/**:
+  ros__parameters:
+    sources:
+      names: [roof_lidar, front_lidar, front_camera]
+      front_camera:
+        type: depth_image
+        topic: /sac/sensors/front_camera/depth_image   # camera_info next to it
+        stride: 4                 # every 4th pixel and row: 320 x 180 of 1280 x 720
+        min_depth: 0.3            # [m]
+        max_depth: 20.0           # [m] the depth's range
+        filters: [self, band]
+        self:
+          type: crop_box
+          from: vehicle
+          margin: 0.1
+        band:
+          type: height_band
+          min: 0.25               # [m] over the ground the lidar found
+          max_from: vehicle
+          clearance: 0.3
+        # It cannot find the ground itself: the roof lidar's ground map. Within 0.2 m of it a
+        # point is road; where none is known (between the lidar's rings: 11.3, 14.6, 20.5 m
+        # out) it only clears the space before it
+        ground_from_map: true
+        ground_margin: 0.2
+        ground_search_radius: 2.0
+        ground_max_age: 3.0
+        max_mark_range: 12.0      # [m] stereo depth errors grow with the square of the range
+        clear_height: 0.3
+        max_clear_range: 20.0
+        hit: 0.75
+        miss: 0.4
+        decay: 0.5

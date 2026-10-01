@@ -33,9 +33,15 @@
 //   max_mark_range [m] (none): returns further away are not marked as obstacles, only the
 //     space before them is cleared (a 2D lidar far ahead often meets a road rising where
 //     no other sensor has seen the ground yet; near the car it covers what the others miss)
+//   ground_from_map (false), point clouds: each point's ground from the shared map before the
+//     filters (a camera, which cannot find the ground itself): within ground_margin of it a
+//     point is ground, and the filters (height_band) measure from it. Where none is known
+//     within ground_search_radius a point only clears the space before it (it is not taken
+//     for an obstacle: the road between a lidar's rings is not known yet)
 
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -47,6 +53,8 @@
 #include <Eigen/Geometry>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <pluginlib/class_loader.hpp>
@@ -163,9 +171,15 @@ class PointCloudSource : public GridSource
 protected:
   void configure(const RosParams & params) override;
   void subscribe(const std::string & topic) override;
+  /// A cloud in base_footprint through the ground map, the filters and into the map
+  void process(
+    Cloud & cloud, const std_msgs::msg::Header & header, const Eigen::Isometry3f & base,
+    const rclcpp::Time & stamp, std::chrono::steady_clock::time_point start);
 
 private:
   void onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedPtr & message);
+  void groundFromMap(Cloud & cloud, const Eigen::Isometry3f & base, double time) const;
+  bool ground_from_map_ = false;
   void publishDebug(const Cloud & cloud, const std_msgs::msg::Header & header);
   std::vector<std::pair<std::string, double>> diagnostics() const override { return diagnostics_; }
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subscription_;
@@ -176,6 +190,30 @@ private:
   float clear_height_ = 0.3f;
   float max_clear_range_ = 40.0f;
   bool clear_ = true;
+};
+
+/// sensor_msgs/Image depth (a depth camera: 32FC1 [m] or 16UC1 [mm]) with its
+/// sensor_msgs/CameraInfo: every `stride`-th pixel of every `stride`-th row back-projected
+/// (the camera's own full cloud is a million points), then as a point cloud
+/// (PointCloudSource's parameters: filters, ground_from_map, ...).
+///   stride (4), min_depth [m] (0.3), max_depth [m] (20)
+///   camera_info: its topic (default: camera_info next to the image's topic)
+class DepthImageSource : public PointCloudSource
+{
+protected:
+  void configure(const RosParams & params) override;
+  void subscribe(const std::string & topic) override;
+
+private:
+  void onImage(const sensor_msgs::msg::Image::ConstSharedPtr & message);
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
+  rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr info_subscription_;
+  std::mutex info_mutex_;
+  sensor_msgs::msg::CameraInfo::ConstSharedPtr info_;
+  std::string info_topic_;
+  int stride_ = 4;
+  float min_depth_ = 0.3f;
+  float max_depth_ = 20.0f;
 };
 
 /// sensor_msgs/LaserScan (2D lidar): returns mark their cells, the space before them is free

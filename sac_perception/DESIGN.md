@@ -170,6 +170,28 @@ the same CPU. Most of the 3D maps' false cells are at one place, (-8, -117) to (
 for every one of them; not looked into yet. They show for a scan or two and are cleared.
 direct_projection stays the default.
 
+## The camera: depth_image
+`camera:=true` (perception.launch.py; `perception_camera:=` of sac_bringup) adds the front
+camera (`config/camera.yaml`). The simulated ZED 2 gives a 1280 x 720 depth image at 15 Hz;
+its full point cloud would be 921 000 points, 11 MB a frame. The `depth_image` source takes
+the depth image itself and back-projects every 4th pixel of every 4th row (58 000 points).
+A camera cannot find the ground: `ground_from_map` takes each point's ground from the roof
+lidar's ground map before the filters (within 0.2 m of it: road; height_band measures from
+it). Where none is known within 2 m (between the lidar's far rings) a point only clears the
+space before it, so a road rising where the lidar has not seen it yet is no obstacle (the
+front 2D lidar's lesson). It marks up to 12 m: stereo depth errors grow with the square of
+the range.
+
+The lap with obstacles beside the route (direct_projection, 5 km): with the camera 2.6 % of
+the grids had a false obstacle in the lane (0.05 cells a grid; 1.4 % and 0.03 without), the
+small obstacles were first seen 14-24 m out, as without it (the lidar sees them before 12 m).
+The camera is for what the lidars miss (close in front of the car, very low things), which
+this lap does not have; it stays off by default. It took 25.5 ms a frame at first: each point
+looked for the ground in 441 cells (2 m around) where its own cell had none. The ground map
+is now searched ring by ring outwards, stopping once no nearer cell can come (the same
+nearest ground: unit test against the whole square): 4.9 ms a frame, and the grid step's
+peaks went from 340 to 19 ms.
+
 ## The shared ground map
 Sources that find the ground write its height into the grid (`provides_ground`); sources that
 cannot tell the ground from an obstacle read it (`ground_margin`): the front 2D lidar's plane

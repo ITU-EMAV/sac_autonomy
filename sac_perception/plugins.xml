@@ -17,6 +17,9 @@
   <class name="pointcloud" type="sac_perception::PointCloudSource" base_class_type="sac_perception::GridSource">
     <description>sensor_msgs/PointCloud2 (3D lidar, depth camera) through a filter chain</description>
   </class>
+  <class name="depth_image" type="sac_perception::DepthImageSource" base_class_type="sac_perception::GridSource">
+    <description>sensor_msgs/Image depth with its CameraInfo (a depth camera), every stride-th pixel</description>
+  </class>
   <class name="laser_scan" type="sac_perception::LaserScanSource" base_class_type="sac_perception::GridSource">
     <description>sensor_msgs/LaserScan (2D lidar)</description>
   </class>

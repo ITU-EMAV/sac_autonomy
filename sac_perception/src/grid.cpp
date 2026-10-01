@@ -44,22 +44,30 @@ bool RollingGrid::groundNear(double x, double y, double radius, double time, dou
   cell(x, y, ci, cj);
   const int reach = static_cast<int>(std::ceil(radius / resolution_));
   int best = std::numeric_limits<int>::max();
-  for (int dj = -reach; dj <= reach; ++dj) {
-    const int j = cj + dj;
-    if (j < 0 || j >= width_) {
+  auto look = [&](int i, int j, int d2) {
+    if (i < 0 || j < 0 || i >= width_ || j >= width_ || d2 > reach * reach || d2 >= best) {
+      return;
+    }
+    const int k = index(i, j);
+    if (!std::isnan(ground_z_[k]) && time - ground_time_[k] <= max_age) {
+      best = d2;
+      z = ground_z_[k];
+    }
+  };
+  // Ring by ring outwards: every cell of ring r is at least r cells away, so once r * r is
+  // past the nearest found there is nothing nearer (the same answer as the whole square)
+  for (int r = 0; r <= reach && r * r < best; ++r) {
+    if (r == 0) {
+      look(ci, cj, 0);
       continue;
     }
-    for (int di = -reach; di <= reach; ++di) {
-      const int i = ci + di;
-      const int d2 = di * di + dj * dj;
-      if (i < 0 || i >= width_ || d2 > reach * reach || d2 >= best) {
-        continue;
-      }
-      const int k = index(i, j);
-      if (!std::isnan(ground_z_[k]) && time - ground_time_[k] <= max_age) {
-        best = d2;
-        z = ground_z_[k];
-      }
+    for (int d = -r; d <= r; ++d) {
+      look(ci + d, cj - r, d * d + r * r);
+      look(ci + d, cj + r, d * d + r * r);
+    }
+    for (int d = -r + 1; d <= r - 1; ++d) {
+      look(ci - r, cj + d, d * d + r * r);
+      look(ci + r, cj + d, d * d + r * r);
     }
   }
   return best != std::numeric_limits<int>::max();
