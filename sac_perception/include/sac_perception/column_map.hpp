@@ -13,6 +13,15 @@
 // per cell (most columns are empty); a free element is not kept. Each element keeps the
 // lowest and highest point that hit it, so the band's edges are those of the points.
 //
+// Tracing, two shortcuts (as OctoMap's discretized insertion and Voxblox's merged
+// integrator, and OpenVDB's hierarchical DDA):
+//   merge_rays (true)  the rays ending in the same cell and voxel height are traced once, to
+//                      their mean end (the points themselves still go in one by one): near the
+//                      car dozens of ground returns share a cell. A cell along them is lowered
+//                      once for them, not once per ray
+//   blocks of 8 x 8 cells with no element are crossed in one step; what was seen is kept per
+//   block there (it only tells free from unknown in the grid, the planner reads neither)
+//
 // Two modes (map.memory):
 //   true   (default) what was seen stays until rays pass through it or it fades: an obstacle
 //          out of a sensor's sight (the blind zone around the car, between a 16-beam lidar's
@@ -22,7 +31,8 @@
 //          things, but what a sensor does not see now is gone
 // The ground map keeps its memory in both (the 2D lidar leans on it).
 //
-// Parameters (map.): memory (true), window [s] (0), the representation's own, and the
+// Parameters (map.): memory (true), window [s] (0), merge_rays (true), the representation's
+// own, and the
 // traversability rules (min_obstacle_height, max_from, clearance, max, max_step,
 // ground_search_radius, ground_max_age, level_gap). Each source keeps its own hit, miss,
 // clamps and decay (LayerParams) for the elements it saw last. A 2D grid from another node
@@ -30,6 +40,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -113,10 +124,39 @@ private:
   /// The ground under the column k at `time` (NaN: none known)
   float ground(int k, int i, int j, double time) const;
   void forget(Column & column);
+  /// Which blocks of cells hold an element
+  void markBlocks();
+  /// f(i, j, k) for each cell with elements, block by block
+  template<typename F>
+  void forEachFull(F && f) const
+  {
+    const int w = plane_->width();
+    for (int bj = 0; bj < blocks_; ++bj) {
+      for (int bi = 0; bi < blocks_; ++bi) {
+        if (!block_full_[bj * blocks_ + bi]) {
+          continue;
+        }
+        for (int j = bj * kBlock; j < std::min(w, (bj + 1) * kBlock); ++j) {
+          for (int i = bi * kBlock; i < std::min(w, (bi + 1) * kBlock); ++i) {
+            const int k = plane_->index(i, j);
+            if (!columns_[k].elements.empty()) {
+              f(i, j, k);
+            }
+          }
+        }
+      }
+    }
+  }
+  static constexpr int kBlock = 8;
 
   Traversability rules_;
   bool memory_ = true;
   float window_ = 0.0f;
+  bool merge_rays_ = true;
+  int blocks_ = 0;                   // blocks across
+  std::vector<uint8_t> block_full_;  // holds an element
+  std::vector<float> block_seen_;    // [s] since the start: a ray crossed it
+  std::vector<Eigen::Vector3f> trace_;  // the rays to trace (merged)
   std::unique_ptr<RollingGrid> plane_;  // the window, the ground map and 2D layers
   std::vector<Column> columns_;
   std::vector<Source> sources_;

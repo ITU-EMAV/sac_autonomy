@@ -192,6 +192,10 @@ TEST(Benchmark, RoofLidarChain)
   SparseVoxel memoryless;
   timeMap(memoryless, "sparse_voxel memory: false");
   none.doubles["memory"] = 1.0;
+  none.doubles["merge_rays"] = 0.0;
+  SparseVoxel unmerged;
+  timeMap(unmerged, "sparse_voxel merge_rays: false");
+  none.doubles["merge_rays"] = 1.0;
   MultiLevelSurface levels;
   timeMap(levels, "multi_level_surface");
   none.doubles["memory"] = 0.0;

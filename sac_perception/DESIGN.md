@@ -134,12 +134,21 @@ map, then decaying and projecting:
 
 | Map | Insert | Decay and project |
 |---|---|---|
-| direct_projection | 1.8 ms | 0.5 ms |
-| sparse_voxel, memory / no memory | 9.1 / 1.2 ms | 1.9 / 2.3 ms |
-| multi_level_surface, memory / no memory | 8.7 / 1.1 ms | 1.7 / 1.6 ms |
+| direct_projection | 1.8 ms | 0.4 ms |
+| sparse_voxel, memory / no memory | 4.7 / 1.0 ms | 1.3 / 1.2 ms |
+| multi_level_surface, memory / no memory | 4.8 / 1.1 ms | 1.2 / 1.3 ms |
 
 With memory the time goes into tracing every ray from the sensor (direct_projection traces
-only a ray's low end), not into the elements: intervals save little over voxels.
+only a ray's low end), not into the elements: intervals save little over voxels. Two
+shortcuts took sparse_voxel from 9.1 ms to 4.7 (6.4 with the first alone):
+- empty blocks of 8 x 8 cells crossed in one step, as OpenVDB's hierarchical DDA: the same
+  elements lowered (unit test); free and unknown are told apart per block there
+- `merge_rays`: the rays ending in the same cell and voxel height traced once, to their mean
+  end, as OctoMap's discretized insertion and Voxblox's merged integrator (the points still
+  go in one by one). Near the car dozens of ground returns share a cell; a cell along them is
+  lowered once for them, so what has gone is cleared over a few scans (within 0.3 s in the
+  unit test) instead of one
+Decaying and projecting go over the blocks holding elements only.
 
 The same lap as above (obstacles beside the route, 4.4-4.6 km each):
 
@@ -150,6 +159,8 @@ The same lap as above (obstacles beside the route, 4.4-4.6 km each):
 | sparse_voxel, no memory | **0.2 %** | 0.02 | 8-16 m | 10.1 ms |
 | multi_level_surface, memory | 0.9 % | 0.14 | 15-24 m | 34.6 ms |
 | multi_level_surface, no memory | **0.2 %** | 0.03 | 14-16 m | 11.7 ms |
+| sparse_voxel, memory, blocks and merged rays (5.2 km) | 0.9 % | 0.08 | 14-25 m | 24.2 ms |
+| multi_level_surface, memory, blocks and merged rays (5.2 km) | 0.7 % | 0.12 | 17-27 m | 22.2 ms |
 
 All ten obstacles were seen each time, their cells within 0.25 m of their footprints. Without
 memory a small obstacle shows only in scans that hit it: a 16-beam lidar misses a cone

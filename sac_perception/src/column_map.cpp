@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace sac_perception
 {
@@ -19,11 +20,28 @@ void ColumnMap::initialize(const Params & params, const GridGeometry & geometry,
   rules_.read(params, vehicle);
   memory_ = params.getBool("memory", memory_);
   window_ = static_cast<float>(params.getDouble("window", window_));
+  merge_rays_ = params.getBool("merge_rays", merge_rays_);
   configure(params);
   plane_ = std::make_unique<RollingGrid>(geometry.size, geometry.resolution);
   plane_->setRecenterDistance(geometry.recenter_distance);
   plane_->setGroundLevels(rules_.level_gap, rules_.ground_max_age);
   columns_.assign(static_cast<std::size_t>(plane_->width()) * plane_->width(), Column{});
+  blocks_ = (plane_->width() + kBlock - 1) / kBlock;
+  block_full_.assign(static_cast<std::size_t>(blocks_) * blocks_, 0);
+  block_seen_.assign(static_cast<std::size_t>(blocks_) * blocks_, -1.0f);
+}
+
+void ColumnMap::markBlocks()
+{
+  std::fill(block_full_.begin(), block_full_.end(), 0);
+  const int w = plane_->width();
+  for (int j = 0; j < w; ++j) {
+    for (int i = 0; i < w; ++i) {
+      if (!columns_[plane_->index(i, j)].elements.empty()) {
+        block_full_[(j / kBlock) * blocks_ + i / kBlock] = 1;
+      }
+    }
+  }
 }
 
 int ColumnMap::addSource(const std::string &, const LayerParams & params)
@@ -65,6 +83,8 @@ void ColumnMap::recenter(double x, double y)
     }
   }
   columns_.swap(moved);
+  std::fill(block_seen_.begin(), block_seen_.end(), -1.0f);  // the blocks moved: seen again next scan
+  markBlocks();
 }
 
 void ColumnMap::forget(Column & column)
@@ -80,15 +100,13 @@ void ColumnMap::decay(double dt)
   for (std::size_t s = 0; s < sources_.size(); ++s) {
     factor[s] = std::exp(-sources_[s].params.decay * static_cast<float>(dt));
   }
-  for (Column & column : columns_) {
-    if (column.elements.empty()) {
-      continue;
-    }
+  forEachFull([&](int, int, int k) {
+    Column & column = columns_[k];
     for (Element & element : column.elements) {
       element.log_odds *= factor[element.source];
     }
     forget(column);
-  }
+  });
 }
 
 void ColumnMap::raise(Element & element, const Eigen::Vector3f & p)
@@ -141,17 +159,14 @@ void ColumnMap::insert(int source_index, const Scan & scan)
 
   if (!memory_) {  // this source's older scans go: the map holds what it sees now
     const float oldest = now - window_;
-    for (Column & column : columns_) {
-      if (column.elements.empty()) {
-        continue;
-      }
-      auto & e = column.elements;
+    forEachFull([&](int, int, int k) {
+      auto & e = columns_[k].elements;
       e.erase(
         std::remove_if(
           e.begin(), e.end(),
           [&](const Element & x) { return x.source == source_index && x.time < oldest - 1e-4f; }),
         e.end());
-    }
+    });
   }
 
   // Hits first: this scan's rays do not lower what it hit
@@ -170,6 +185,7 @@ void ColumnMap::insert(int source_index, const Scan & scan)
       column.seen = now;  // no rays traced: where they end was seen
     }
   }
+  markBlocks();
   if (!memory_) {
     return;
   }
@@ -182,10 +198,40 @@ void ColumnMap::insert(int source_index, const Scan & scan)
   const float x0 = static_cast<float>((ox - plane_->originX()) / res);
   const float y0 = static_cast<float>((oy - plane_->originY()) / res);
   const float inf = std::numeric_limits<float>::infinity();
-  for (const Ray & ray : scan.rays) {
-    const float dx = ray.end.x() - ox;
-    const float dy = ray.end.y() - oy;
-    const float dz = ray.end.z() - oz;
+  trace_.clear();
+  if (merge_rays_) {  // one ray per end cell and height, to the mean of their ends
+    std::unordered_map<uint64_t, uint32_t> slot;
+    slot.reserve(scan.rays.size());
+    std::vector<uint32_t> count;
+    const float inv = static_cast<float>(1.0 / res);
+    for (const Ray & ray : scan.rays) {
+      const auto ix = static_cast<int64_t>(std::floor((ray.end.x() - plane_->originX()) * inv));
+      const auto iy = static_cast<int64_t>(std::floor((ray.end.y() - plane_->originY()) * inv));
+      const auto iz = static_cast<int64_t>(std::floor(ray.end.z() / element_height_));
+      const uint64_t key = (static_cast<uint64_t>((ix + (1 << 20)) & 0x1FFFFF) << 42) |
+        (static_cast<uint64_t>((iy + (1 << 20)) & 0x1FFFFF) << 21) |
+        static_cast<uint64_t>((iz + (1 << 20)) & 0x1FFFFF);
+      const auto [it, added] = slot.try_emplace(key, static_cast<uint32_t>(trace_.size()));
+      if (added) {
+        trace_.push_back(ray.end);
+        count.push_back(1);
+      } else {
+        trace_[it->second] += ray.end;
+        ++count[it->second];
+      }
+    }
+    for (std::size_t k = 0; k < trace_.size(); ++k) {
+      trace_[k] /= static_cast<float>(count[k]);
+    }
+  } else {
+    for (const Ray & ray : scan.rays) {
+      trace_.push_back(ray.end);
+    }
+  }
+  for (const Eigen::Vector3f & end : trace_) {
+    const float dx = end.x() - ox;
+    const float dy = end.y() - oy;
+    const float dz = end.z() - oz;
     const float length = std::hypot(dx, dy);
     if (length < 1e-3f) {
       continue;
@@ -208,6 +254,37 @@ void ColumnMap::insert(int source_index, const Scan & scan)
     float next_j = cy > 0 ? (cj + 1 - y0) / cy : (cy < 0 ? (y0 - cj) / -cy : inf);
     float t_in = 0.0f;
     for (int guard = 0; guard < 4 * w; ++guard) {
+      if (ci >= 0 && cj >= 0 && ci < w && cj < w) {
+        const int b = (cj / kBlock) * blocks_ + ci / kBlock;
+        block_seen_[b] = now;
+        if (!block_full_[b]) {  // nothing to lower in this block: to where the ray leaves it
+          const int bi = (ci / kBlock) * kBlock;
+          const int bj = (cj / kBlock) * kBlock;
+          const float exit_i = cx > 0 ? (bi + kBlock - x0) / cx : (cx < 0 ? (bi - x0) / cx : inf);
+          const float exit_j = cy > 0 ? (bj + kBlock - y0) / cy : (cy < 0 ? (bj - y0) / cy : inf);
+          const float t_exit = std::min(exit_i, exit_j);
+          if (t_exit >= t_max) {
+            break;
+          }
+          // Restart the traversal just past the block's edge (a thousandth of a cell past
+          // it); if rounding leaves it in the block, step on cell by cell instead
+          const float t = t_exit + 1e-3f / std::max(std::abs(cx), std::abs(cy));
+          const int ni = static_cast<int>(std::floor(x0 + t * cx));
+          const int nj = static_cast<int>(std::floor(y0 + t * cy));
+          if ((ni >= bi && ni < bi + kBlock && nj >= bj && nj < bj + kBlock) || t >= t_max) {
+            if (t >= t_max) {
+              break;
+            }
+          } else {
+            ci = ni;
+            cj = nj;
+            next_i = cx > 0 ? (ci + 1 - x0) / cx : (cx < 0 ? (ci - x0) / cx : inf);
+            next_j = cy > 0 ? (cj + 1 - y0) / cy : (cy < 0 ? (cj - y0) / cy : inf);
+            t_in = t_exit;
+            continue;
+          }
+        }
+      }
       const float t_out = std::min({next_i, next_j, t_max});
       if (ci >= 0 && cj >= 0 && ci < w && cj < w) {
         Column & column = columns_[plane_->index(ci, cj)];
@@ -259,7 +336,9 @@ float ColumnMap::ground(int k, int i, int j, double time) const
   const double x = plane_->originX() + (i + 0.5) * res;
   const double y = plane_->originY() + (j + 0.5) * res;
   float z = 0.0f;
-  if (plane_->groundNear(x, y, rules_.ground_search_radius, time, rules_.ground_max_age, z)) {
+  if (plane_->groundNear(x, y, 0.0, time, rules_.ground_max_age, z) ||
+    plane_->groundNear(x, y, rules_.ground_search_radius, time, rules_.ground_max_age, z))
+  {
     return z;
   }
   return columns_[k].estimated_ground;
@@ -315,8 +394,9 @@ std::vector<int8_t> ColumnMap::project() const
     for (int i = 0; i < w; ++i) {
       const int k = plane_->index(i, j);
       const Column & column = columns_[k];
+      const int b = (j / kBlock) * blocks_ + i / kBlock;
       float best = -std::numeric_limits<float>::infinity();
-      if (!column.elements.empty()) {
+      if (block_full_[b] && !column.elements.empty()) {
         const float g = ground(k, i, j, time_);
         for (const Element & element : column.elements) {
           if (element.log_odds > best && rules_.blocks(g, element.lo, element.hi)) {
@@ -327,7 +407,10 @@ std::vector<int8_t> ColumnMap::project() const
       int8_t value = -1;
       if (best > -std::numeric_limits<float>::infinity()) {
         value = logOddsToPercent(best);
-      } else if (column.seen >= 0.0f && now - column.seen <= recent) {
+      } else if (
+        (block_seen_[b] >= 0.0f && now - block_seen_[b] <= recent) ||
+        (column.seen >= 0.0f && now - column.seen <= recent))
+      {
         value = 0;
       }
       if (!own_ground.empty() && !std::isnan(own_ground[k])) {
@@ -356,13 +439,10 @@ void ColumnMap::points(std::vector<MapPoint> & out) const
   const int w = plane_->width();
   const double res = plane_->resolution();
   std::vector<float> heights;
-  for (int j = 0; j < w; ++j) {
-    for (int i = 0; i < w; ++i) {
-      const int k = plane_->index(i, j);
-      const Column & column = columns_[k];
-      if (column.elements.empty()) {
-        continue;
-      }
+  (void)w;
+  forEachFull([&](int i, int j, int k) {
+    const Column & column = columns_[k];
+    {
       const float g = ground(k, i, j, time_);
       const float x = static_cast<float>(plane_->originX() + (i + 0.5) * res);
       const float y = static_cast<float>(plane_->originY() + (j + 0.5) * res);
@@ -376,7 +456,7 @@ void ColumnMap::points(std::vector<MapPoint> & out) const
         }
       }
     }
-  }
+  });
 }
 
 std::vector<std::pair<std::string, double>> ColumnMap::diagnostics() const

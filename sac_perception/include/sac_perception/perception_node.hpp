@@ -83,6 +83,7 @@ private:
   rclcpp::Time last_tick_;
   bool ticked_ = false;
   double grid_ms_max_ = 0.0;
+  double map_ms_last_ = 0.0;  // building and publishing ~/map
 };
 
 }  // namespace sac_perception

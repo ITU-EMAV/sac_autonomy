@@ -177,18 +177,25 @@ void PerceptionNode::tick()
   message.header.frame_id = grid_frame_;
   message.info.map_load_time = message.header.stamp;
   grid_publisher_->publish(message);
-  if (map_publisher_ && (last_map_.nanoseconds() == 0 || (now - last_map_).seconds() >= map_period_ - 1e-3)) {
-    last_map_ = now;
-    publishMap(message.header.stamp);
-  }
   const double grid_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
   grid_ms_max_ = std::max(grid_ms_max_, grid_ms);
+  double map_ms = -1.0;
+  if (map_publisher_ && (last_map_.nanoseconds() == 0 || (now - last_map_).seconds() >= map_period_ - 1e-3)) {
+    last_map_ = now;
+    const auto map_start = std::chrono::steady_clock::now();
+    publishMap(message.header.stamp);
+    map_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - map_start).count();
+    map_ms_last_ = map_ms;
+  }
 
   diagnostic_msgs::msg::DiagnosticArray timing;
   timing.header.stamp = now;
   diagnostic_msgs::msg::DiagnosticStatus grid_status;
   grid_status.name = "grid";
   grid_status.values = {keyValue("last_ms", grid_ms), keyValue("max_ms", grid_ms_max_)};
+  if (map_publisher_) {
+    grid_status.values.push_back(keyValue("map_publish_ms", map_ms_last_));
+  }
   for (const auto & [key, value] : map_diagnostics) {
     grid_status.values.push_back(keyValue(key, value));
   }

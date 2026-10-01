@@ -172,9 +172,56 @@ TYPED_TEST(ColumnMaps, RaysThroughAnElementClearIt)
   // A ray of the same scan that hits it does not clear it
   f.scan({Eigen::Vector3f(10.05f, 0.05f, 0.5f)}, ground);
   EXPECT_TRUE(f.blocked(10.05, 0.05));
-  f.scan({}, ground);  // two dozen rays through it
+  // Two dozen rays through it, ending in 6 cells: merged, 6 rays a scan; gone within 0.3 s
+  for (int k = 0; k < 3; ++k) {
+    f.scan({}, ground);
+  }
   EXPECT_FALSE(f.blocked(10.05, 0.05));
   EXPECT_EQ(f.value(10.05, 0.05), 0);  // seen free
+
+  MapParams unmerged;  // each ray traced: gone with one scan
+  unmerged.doubles["merge_rays"] = 0.0;
+  Fixture<TypeParam> g(unmerged);
+  g.ground(0.0f);
+  for (int k = 0; k < 3; ++k) {
+    g.scan({Eigen::Vector3f(10.05f, 0.05f, 0.5f)});
+  }
+  g.scan({}, ground);
+  EXPECT_FALSE(g.blocked(10.05, 0.05));
+}
+
+TYPED_TEST(ColumnMaps, EmptyBlocksAreCrossedWithoutMissingAnything)
+{
+  // Elements scattered in a few blocks far apart, rays crossing empty blocks to reach them:
+  // traced with and without merging, the same cells are lowered
+  MapParams unmerged;
+  unmerged.doubles["merge_rays"] = 0.0;
+  Fixture<TypeParam> f(unmerged);
+  f.ground(0.0f);
+  const std::vector<Eigen::Vector3f> boxes = {
+    Eigen::Vector3f(10.05f, 0.05f, 0.5f), Eigen::Vector3f(-12.15f, 7.35f, 0.9f),
+    Eigen::Vector3f(3.35f, -20.05f, 1.1f), Eigen::Vector3f(-25.05f, -25.05f, 0.7f)};
+  for (int k = 0; k < 3; ++k) {
+    f.scan(boxes);
+  }
+  for (const auto & b : boxes) {
+    ASSERT_TRUE(f.blocked(b.x(), b.y()));
+  }
+  // Rays to the ground behind each, passing through it
+  std::vector<Eigen::Vector3f> ground;
+  for (const auto & b : boxes) {
+    const Eigen::Vector3f d(b.x(), b.y(), b.z() - 1.8f);
+    const float s = -1.8f / d.z();  // where the ray from (0, 0, 1.8) through it meets z = 0
+    for (float e = -0.02f; e <= 0.02f; e += 0.01f) {
+      ground.emplace_back(s * b.x() + e, s * b.y() - e, 0.0f);
+    }
+  }
+  for (int k = 0; k < 3; ++k) {
+    f.scan({}, ground);
+  }
+  for (const auto & b : boxes) {
+    EXPECT_FALSE(f.blocked(b.x(), b.y())) << b.transpose();
+  }
 }
 
 TYPED_TEST(ColumnMaps, WithoutMemoryOnlyTheLastScanCounts)
