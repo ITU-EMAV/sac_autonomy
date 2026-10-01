@@ -246,8 +246,12 @@ set_pose) has four people crossing 12-16 m of road, at 1.0-2.5 m/s, starting whe
   last occupied and not occupied for 0.5 s (`map.free_space.burn_in`; occupied observations
   0.2 s apart are one, `sparsity`); it stays so until occupied 1 s in a row (`static_after`:
   something came to stay). A point taking an ever-free cell, or one next to it, moved there;
-  a cluster with such points, update after update for 0.3 s, is moving. The road is seen free
-  again and again over a lap, so the moment a person steps onto it counts
+  a cluster with such points, update after update for 0.3 s, is moving. Only the grid's window
+  is kept (80 m, 40 m each way: a cell leaving it is forgotten, label and all): the road ahead
+  comes into it 40 m out, the lidar's ground rings (34 and 20.5 m out on flat ground) sweep
+  over it as the car drives, and once seen free it stays known free however long ago that
+  was. "Seen free in the last second" had lost it again by 25 m. A cell never seen free yet
+  (just come into the window, or in a lidar's shadow) tells nothing
 
 | Crossing lap, planner on | "recently free" + the stop-gap rule | ever-free (Dynablox) |
 |---|---|---|
