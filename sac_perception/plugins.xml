@@ -35,4 +35,10 @@
   <class name="multi_level_surface" type="sac_perception::MultiLevelSurface" base_class_type="sac_perception::MapRepresentation">
     <description>Obstacle points kept as height intervals per cell, projected by the traversability rules</description>
   </class>
+  <class name="connected_components" type="sac_perception::ConnectedComponents" base_class_type="sac_perception::Clusterer">
+    <description>Obstacle cells closer than a tolerance to each other are one cluster, with its box and a class by its size</description>
+  </class>
+  <class name="kalman_tracker" type="sac_perception::KalmanTracker" base_class_type="sac_perception::Tracker">
+    <description>A constant-velocity Kalman filter per object, clusters assigned by Mahalanobis distance</description>
+  </class>
 </library>

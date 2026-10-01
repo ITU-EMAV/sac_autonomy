@@ -85,6 +85,8 @@ public:
   void decay(double dt);
 
   float logOdds(int layer, int i, int j) const { return layers_[layer].cells[index(i, j)]; }
+  /// When a ray last found the cell free [s] (-inf: never)
+  double lastFree(double x, double y) const;
 
   /// The shared ground height map: sources that find the ground (a 3D lidar's ground points)
   /// write it, sources that cannot tell the ground from an obstacle (a 2D lidar, whose plane
@@ -125,6 +127,7 @@ private:
   double recenter_distance_ = 0.0;
   std::vector<Layer> layers_;
   std::vector<uint32_t> hit_scan_;  // per cell: last scan that hit it
+  std::vector<double> free_time_;   // per cell: when a ray last found it free
   uint32_t scan_counter_ = 0;
   std::vector<float> ground_z_;      // NaN: never seen
   std::vector<double> ground_time_;  // [s] when

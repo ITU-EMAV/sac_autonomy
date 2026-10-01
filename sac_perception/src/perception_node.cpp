@@ -38,6 +38,8 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   root_(this, ""),
   map_loader_("sac_perception", "sac_perception::MapRepresentation"),
   filter_loader_("sac_perception", "sac_perception::PointFilter"),
+  clusterer_loader_("sac_perception", "sac_perception::Clusterer"),
+  tracker_loader_("sac_perception", "sac_perception::Tracker"),
   source_loader_("sac_perception", "sac_perception::GridSource")
 {
   grid_frame_ = root_.getString("grid_frame", "odom");
@@ -46,6 +48,17 @@ PerceptionNode::PerceptionNode(const rclcpp::NodeOptions & options)
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
   grid_publisher_ = create_publisher<nav_msgs::msg::OccupancyGrid>("~/grid", rclcpp::QoS(1));
   timing_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("~/timing", rclcpp::QoS(1));
+  if (root_.getBool("objects.enabled", true)) {
+    objects_window_ = root_.getDouble("objects.window", objects_window_);
+    objects_range_ = root_.getDouble("objects.max_range", objects_range_);
+    clusterer_ = clusterer_loader_.createSharedInstance(
+      root_.getString("objects.clusterer.type", "connected_components"));
+    clusterer_->initialize(RosParams(this, "objects.clusterer."));
+    tracker_ = tracker_loader_.createSharedInstance(root_.getString("objects.tracker.type", "kalman_tracker"));
+    tracker_->initialize(RosParams(this, "objects.tracker."));
+    objects_publisher_ = create_publisher<sac_perception_msgs::msg::TrackedObjects>("~/objects", rclcpp::QoS(1));
+    markers_publisher_ = create_publisher<visualization_msgs::msg::MarkerArray>("~/objects/markers", rclcpp::QoS(1));
+  }
   if (root_.getBool("publish_map", false)) {
     map_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("~/map", rclcpp::QoS(1));
     map_period_ = 1.0 / root_.getDouble("publish_map_rate", 5.0);
@@ -154,6 +167,7 @@ void PerceptionNode::tick()
   const auto start = std::chrono::steady_clock::now();
   nav_msgs::msg::OccupancyGrid message;
   std::vector<std::pair<std::string, double>> map_diagnostics;
+  double latest = 0.0;
   {
     std::lock_guard<std::mutex> lock(map_.mutex);
     MapRepresentation & map = *map_.map;
@@ -170,6 +184,10 @@ void PerceptionNode::tick()
     message.info.origin.orientation.w = 1.0;
     message.data = map.project();
     map_diagnostics = map.diagnostics();
+    if (tracker_) {
+      latest = map.latest();
+      map.recent(latest - objects_window_, recent_);
+    }
   }
   last_tick_ = now;
   ticked_ = true;
@@ -188,6 +206,14 @@ void PerceptionNode::tick()
     map_ms_last_ = map_ms;
   }
 
+  if (tracker_ && latest > 0.0) {
+    const auto objects_start = std::chrono::steady_clock::now();
+    updateObjects(
+      recent_, latest, message.header.stamp,
+      Eigen::Vector3d(base.transform.translation.x, base.transform.translation.y, base.transform.translation.z));
+    objects_ms_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - objects_start).count();
+  }
+
   diagnostic_msgs::msg::DiagnosticArray timing;
   timing.header.stamp = now;
   diagnostic_msgs::msg::DiagnosticStatus grid_status;
@@ -195,6 +221,10 @@ void PerceptionNode::tick()
   grid_status.values = {keyValue("last_ms", grid_ms), keyValue("max_ms", grid_ms_max_)};
   if (map_publisher_) {
     grid_status.values.push_back(keyValue("map_publish_ms", map_ms_last_));
+  }
+  if (tracker_) {
+    grid_status.values.push_back(keyValue("objects_ms", objects_ms_));
+    grid_status.values.push_back(keyValue("objects", static_cast<double>(tracker_->tracks().size())));
   }
   for (const auto & [key, value] : map_diagnostics) {
     grid_status.values.push_back(keyValue(key, value));
@@ -214,6 +244,101 @@ void PerceptionNode::tick()
     timing.status.push_back(status);
   }
   timing_publisher_->publish(timing);
+}
+
+void PerceptionNode::updateObjects(
+  std::vector<RecentPoint> & recent, double time, const rclcpp::Time & stamp, const Eigen::Vector3d & car)
+{
+  const double z = car.z();
+  const Eigen::Vector2f centre = car.head<2>().cast<float>();
+  const float range2 = static_cast<float>(objects_range_ * objects_range_);
+  recent.erase(
+    std::remove_if(
+      recent.begin(), recent.end(), [&](const RecentPoint & p) { return (p.xy - centre).squaredNorm() > range2; }),
+    recent.end());
+  clusterer_->cluster(recent, clusters_);
+  tracker_->update(clusters_, time);
+  sac_perception_msgs::msg::TrackedObjects objects;
+  objects.header.stamp = stamp;
+  objects.header.frame_id = grid_frame_;
+  visualization_msgs::msg::MarkerArray markers;
+  std::size_t count = 0;
+  for (const Track & t : tracker_->tracks()) {
+    sac_perception_msgs::msg::TrackedObject o;
+    o.id = t.id;
+    o.classification = static_cast<uint8_t>(t.last.classification);
+    o.confirmed = t.confirmed;
+    o.moving = t.moving;
+    o.position.x = t.x(0);
+    o.position.y = t.x(1);
+    o.position.z = z;
+    o.velocity.x = t.x(2);
+    o.velocity.y = t.x(3);
+    o.position_covariance = {t.P(0, 0), t.P(0, 1), t.P(1, 0), t.P(1, 1)};
+    o.velocity_covariance = {t.P(2, 2), t.P(2, 3), t.P(3, 2), t.P(3, 3)};
+    o.yaw = t.last.yaw;
+    o.length = t.last.length;
+    o.width = t.last.width;
+    o.height = std::isfinite(t.last.height) ? t.last.height : 0.0f;
+    o.age = static_cast<float>(time - t.first);
+    o.hits = t.hits;
+    objects.objects.push_back(o);
+    if (!t.confirmed) {
+      continue;
+    }
+    // Its box, coloured by class (moving: red), and its velocity
+    visualization_msgs::msg::Marker box;
+    box.header = objects.header;
+    box.ns = "objects";
+    box.id = static_cast<int>(count++);
+    box.type = visualization_msgs::msg::Marker::CUBE;
+    const float height = std::max(0.3f, o.height);
+    box.pose.position.x = o.position.x;
+    box.pose.position.y = o.position.y;
+    box.pose.position.z = z + height / 2.0;
+    box.pose.orientation.z = std::sin(o.yaw / 2.0);
+    box.pose.orientation.w = std::cos(o.yaw / 2.0);
+    box.scale.x = std::max(0.2f, o.length);
+    box.scale.y = std::max(0.2f, o.width);
+    box.scale.z = height;
+    static const float colours[5][3] = {
+      {0.6f, 0.6f, 0.6f}, {1.0f, 0.8f, 0.0f}, {0.2f, 0.5f, 1.0f}, {0.9f, 0.5f, 0.1f}, {0.4f, 0.4f, 0.4f}};
+    const auto & c = colours[std::min<int>(o.classification, 4)];
+    box.color.r = o.moving ? 1.0f : c[0];
+    box.color.g = o.moving ? 0.1f : c[1];
+    box.color.b = o.moving ? 0.1f : c[2];
+    box.color.a = 0.5f;
+    markers.markers.push_back(box);
+    if (o.moving) {
+      visualization_msgs::msg::Marker arrow = box;
+      arrow.id = static_cast<int>(count++);
+      arrow.type = visualization_msgs::msg::Marker::ARROW;
+      arrow.points.resize(2);
+      arrow.points[0].x = o.position.x;
+      arrow.points[0].y = o.position.y;
+      arrow.points[0].z = z + height;
+      arrow.points[1].x = o.position.x + o.velocity.x;  // where it is in a second
+      arrow.points[1].y = o.position.y + o.velocity.y;
+      arrow.points[1].z = z + height;
+      arrow.pose = geometry_msgs::msg::Pose();
+      arrow.scale.x = 0.1;
+      arrow.scale.y = 0.2;
+      arrow.scale.z = 0.2;
+      arrow.color.a = 1.0f;
+      markers.markers.push_back(arrow);
+    }
+  }
+  for (std::size_t k = count; k < markers_last_; ++k) {  // the ones of before that are gone
+    visualization_msgs::msg::Marker gone;
+    gone.header = objects.header;
+    gone.ns = "objects";
+    gone.id = static_cast<int>(k);
+    gone.action = visualization_msgs::msg::Marker::DELETE;
+    markers.markers.push_back(gone);
+  }
+  markers_last_ = count;
+  objects_publisher_->publish(objects);
+  markers_publisher_->publish(markers);
 }
 
 void PerceptionNode::publishMap(const rclcpp::Time & stamp)

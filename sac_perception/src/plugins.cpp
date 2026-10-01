@@ -6,6 +6,7 @@
 #include "sac_perception/ground_patchwork.hpp"
 #include "sac_perception/map_representation.hpp"
 #include "sac_perception/multi_level_surface.hpp"
+#include "sac_perception/objects.hpp"
 #include "sac_perception/sources.hpp"
 #include "sac_perception/sparse_voxel.hpp"
 
@@ -21,3 +22,5 @@ PLUGINLIB_EXPORT_CLASS(sac_perception::OccupancyGridSource, sac_perception::Grid
 PLUGINLIB_EXPORT_CLASS(sac_perception::DirectProjection, sac_perception::MapRepresentation)
 PLUGINLIB_EXPORT_CLASS(sac_perception::SparseVoxel, sac_perception::MapRepresentation)
 PLUGINLIB_EXPORT_CLASS(sac_perception::MultiLevelSurface, sac_perception::MapRepresentation)
+PLUGINLIB_EXPORT_CLASS(sac_perception::ConnectedComponents, sac_perception::Clusterer)
+PLUGINLIB_EXPORT_CLASS(sac_perception::KalmanTracker, sac_perception::Tracker)

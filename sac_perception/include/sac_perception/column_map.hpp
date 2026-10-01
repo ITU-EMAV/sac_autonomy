@@ -78,6 +78,9 @@ public:
   double originY() const override { return plane_->originY(); }
   std::vector<int8_t> project() const override;
   void points(std::vector<MapPoint> & out) const override;
+  /// The elements in the band hit since then, at their cells' centres
+  void recent(double since, std::vector<RecentPoint> & out) const override;
+  double latest() const override { return time_; }
   std::vector<std::pair<std::string, double>> diagnostics() const override;
 
   /// For tests: the column's ground as the projection sees it (NaN: none)
@@ -100,6 +103,7 @@ protected:
     std::vector<Element> elements;
     float estimated_ground = std::numeric_limits<float>::quiet_NaN();  // from the ground filter
     float seen = -1.0f;  // [s] since the start: a ray passed or a point fell here
+    float free = -std::numeric_limits<float>::infinity();  // [s] since the start: found free
     // The ground under it as last found, and when (found again after ground_cache_time)
     mutable float ground = std::numeric_limits<float>::quiet_NaN();
     mutable float ground_at = -std::numeric_limits<float>::infinity();
@@ -168,6 +172,7 @@ private:
   int blocks_ = 0;                   // blocks across
   std::vector<uint8_t> block_full_;  // holds an element
   std::vector<float> block_seen_;    // [s] since the start: a ray crossed it
+  std::vector<float> block_free_;    // [s] since the start: a ray crossed it with nothing in it
   std::vector<Eigen::Vector3f> trace_;  // the rays to trace (merged)
   std::unique_ptr<RollingGrid> plane_;  // the window, the ground map and 2D layers
   std::vector<Column> columns_;

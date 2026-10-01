@@ -14,6 +14,28 @@
       type: direct_projection     # each source's rays straight into its own 2D layer
     publish_map: true             # what the map holds on /sac/perception/map, to look at
     publish_map_rate: 5.0         # [Hz]
+    objects:                      # what was seen lately, clustered and followed: /sac/perception/objects
+      enabled: true
+      window: 0.15                # [s] a 10 Hz lidar's last scan
+      max_range: 30.0             # [m] from the car
+      clusterer:
+        type: connected_components
+        tolerance: 0.4            # [m] closer cells are one object
+        min_points: 2
+        max_object_size: 8.0      # [m] longer is a structure (wall, slope): no speed
+        free_window: 1.0          # [s] a cell seen free this shortly before it is taken: fresh
+      tracker:
+        type: kalman_tracker
+        acceleration_noise: 2.0   # [m/s^2] how much an object's speed may change
+        position_noise: 0.15      # [m] a cluster's centre (more for a larger one)
+        gate: 3.0                 # [sigma]
+        max_jump: 2.0             # [m]
+        confirm_hits: 3
+        max_unseen: 0.5           # [s]
+        tentative_unseen: 0.2     # [s]
+        moving_speed: 0.5         # [m/s]
+        min_fresh: 0.1            # moving: its clusters take cells seen free just before
+        fresh_time: 0.3           # [s] ... update after update for this long
     vehicle:
       from: robot_description     # the car's box from its URDF: the filters below follow it
 

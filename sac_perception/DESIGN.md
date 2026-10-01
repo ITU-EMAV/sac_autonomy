@@ -192,6 +192,53 @@ is now searched ring by ring outwards, stopping once no nearer cell can come (th
 nearest ground: unit test against the whole square): 4.9 ms a frame, and the grid step's
 peaks went from 340 to 19 ms.
 
+## Objects: clusters followed over time
+For what moves (a pedestrian crossing) the grid is not enough: the planner needs where it
+will be. Every grid step (`objects` in the YAML, `objects.hpp`), the map gives the obstacles
+in the car's way seen in the last 0.15 s within 30 m (`recent()`, any representation), a
+clusterer groups them, a tracker follows the groups; `/sac/perception/objects`
+(sac_perception_msgs/TrackedObjects: id, class, position, velocity and their covariances,
+box, age) and boxes with velocity arrows on `/sac/perception/objects/markers`.
+- `connected_components`: cells within 0.4 m of each other are one cluster; its box along
+  its main direction (PCA), a class by its size (pedestrian: up to 1.2 m across, 1-2.2 m
+  high; vehicle: 2.5-6 m long; small: lower than 0.8 m; structure: longer than 8 m)
+- `kalman_tracker`: a constant-velocity Kalman filter per object, clusters joined to tracks
+  by Mahalanobis distance (3 sigma, 2 m at most), nearest pairs first; confirmed after 3
+  scans, dropped 0.5 s unseen. A 10 Hz lidar's scan is in two 20 Hz grids: a track takes a
+  cluster only if newer than its last
+- `moving`: confirmed, faster than 0.5 m/s (2 sigma over half of it), and, after Wang et
+  al.'s free-space test (DATMO, IJRR 2007), taking cells seen free just before (a tenth of
+  its cells or more, update after update for 0.3 s). The maps keep when each cell was last
+  seen free (a ray passing it or ending on the ground there)
+
+The first lap told why the free-space test: a barrier or a slope beside the track is cut by
+one lidar ring into a short line, and as the car drives the ring moves on with it: the line
+slides along the barrier at nearly the car's speed. Its centre moves, its cells were never
+free (the rays end on it). Also a cluster much longer than wide is trusted across, hardly
+along (its ends are where the view ends).
+
+`many` obstacles (gazebo_environment: 34 beside the route, people alone and in pairs 1 m
+apart, cones, poles, boxes, parked cars), direct_projection, a lap (4.4-4.9 km); per obstacle
+within 25 m of the car:
+
+| | Without the free-space test | With it |
+|---|---|---|
+| a confirmed object on it | people 93-100 %, cones 47-81 %, small boxes 45-65 % | people 92-100 %, cones 75-80 %, small boxes 46-65 % |
+| people classed pedestrian | 74-95 % | 68-92 % |
+| pairs 1 m apart seen as two | 99-100 % | 98-100 % |
+| standing obstacles' speed, p95 | people 0.2-0.3, cars 0.8-4.0 m/s | people 0.2-0.3, cars 0.6-2.3 m/s |
+| id switches (34 obstacles) | 61 | 60 |
+| messages with a `moving` object | 56 % (1083 ids) | 20 % (271 ids) |
+
+Everything in this lap stands still, so every `moving` object is false. What is left are
+mostly thin clusters 17-32 m away, 1-2 m high: slopes and growth beside the track, whose cells
+were seen free a moment before (the last scan's rays ran low over them). Poles are classed
+pedestrian (the same size). A parked car changes id as the car passes it (the side it shows
+changes). 91 % of the confirmed objects within 25 m lie on no spawned obstacle (terrain,
+barriers): the grid stops the planner for them anyway; the objects are for what moves.
+Not caught by the free-space test: a car driving away (the space it moves into is hidden
+behind it); cells it leaves free would tell.
+
 ## The shared ground map
 Sources that find the ground write its height into the grid (`provides_ground`); sources that
 cannot tell the ground from an obstacle read it (`ground_margin`): the front 2D lidar's plane

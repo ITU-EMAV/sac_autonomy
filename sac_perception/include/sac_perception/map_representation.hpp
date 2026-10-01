@@ -37,6 +37,16 @@ struct MapPoint
   uint8_t source;            // the source that saw it last
 };
 
+/// An obstacle seen lately, for the objects (objects.hpp)
+struct RecentPoint
+{
+  Eigen::Vector2f xy;  // grid frame
+  float top;           // [m] its highest point over the ground (NaN: unknown)
+  double time;         // [s] when it was seen
+  double free;         // [s] when its cell was last seen free before (-inf: never): a cell
+                       // seen free a moment ago and taken now is something moving into it
+};
+
 /// The published window
 struct GridGeometry
 {
@@ -83,6 +93,11 @@ public:
   /// What the map holds, as points (a voxel's centre, a cell's at its ground)
   virtual void points(std::vector<MapPoint> & out) const { out.clear(); }
 
+  /// The obstacles in the car's way seen since `since` [s] (for the objects), and the time of
+  /// the newest scan
+  virtual void recent(double since, std::vector<RecentPoint> & out) const = 0;
+  virtual double latest() const = 0;
+
   /// Numbers for tuning, published with the timing
   virtual std::vector<std::pair<std::string, double>> diagnostics() const { return {}; }
 };
@@ -103,7 +118,7 @@ public:
   }
   void recenter(double x, double y) override { grid_->recenter(x, y); }
   void decay(double dt) override { grid_->decay(dt); }
-  void insert(int source, const Scan & scan) override { grid_->integrate(source, scan); }
+  void insert(int source, const Scan & scan) override;
   void set(int source, double x, double y, float log_odds) override { grid_->set(source, x, y, log_odds); }
   void setGround(double x, double y, float z, double time) override { grid_->setGround(x, y, z, time); }
   bool groundNear(double x, double y, double radius, double time, double max_age, float & z) const override
@@ -117,11 +132,16 @@ public:
   std::vector<int8_t> project() const override { return grid_->combined(); }
   /// The occupied cells, at the ground known near them (1 m)
   void points(std::vector<MapPoint> & out) const override;
+  /// Each source's last scan's marked obstacle points
+  void recent(double since, std::vector<RecentPoint> & out) const override;
+  double latest() const override { return latest_; }
 
   const RollingGrid & grid() const { return *grid_; }
 
 private:
   std::unique_ptr<RollingGrid> grid_;
+  std::vector<std::vector<RecentPoint>> last_;  // per source
+  double latest_ = 0.0;
 };
 
 }  // namespace sac_perception

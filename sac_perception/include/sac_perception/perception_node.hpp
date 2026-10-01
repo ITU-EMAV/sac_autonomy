@@ -16,6 +16,10 @@
 //       none               (default) unknown
 //   sources.names: [...] and each source's parameters under sources.<name>.
 //   publish_map (false), publish_map_rate [Hz] (5): what the map holds on ~/map
+//   objects.enabled (true), objects.window [s] (0.15), objects.max_range [m] (30, from the car),
+//     objects.clusterer.type
+//     (connected_components), objects.tracker.type (kalman_tracker) and their parameters
+//     under their names (objects.hpp)
 // Publishes:
 //   ~/grid     nav_msgs/OccupancyGrid in grid_frame, all layers combined (remapped to
 //              /sac/perception/grid)
@@ -23,6 +27,8 @@
 //              (voxels, or occupied cells at their ground), fields x, y, z, occupancy [%],
 //              blocks (1: in the grid, 0: kept but not in the way, e.g. over the car),
 //              source (index in sources.names)
+//   ~/objects  sac_perception_msgs/TrackedObjects in grid_frame: the objects followed, with
+//              their velocities; ~/objects/markers visualization_msgs/MarkerArray of them
 //   ~/timing   diagnostic_msgs/DiagnosticArray: per source the processing time [ms] (last,
 //              mean, max) and skipped messages, and the grid step's time with the map's
 //              numbers
@@ -35,7 +41,9 @@
 
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
+#include <sac_perception_msgs/msg/tracked_objects.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <pluginlib/class_loader.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -43,6 +51,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include "sac_perception/filters.hpp"
+#include "sac_perception/objects.hpp"
 #include "sac_perception/ros_params.hpp"
 #include "sac_perception/sources.hpp"
 
@@ -59,6 +68,9 @@ private:
   void start(const VehicleBox & vehicle);
   void tick();
   void publishMap(const rclcpp::Time & stamp);
+  /// Clusters of what was seen lately, followed: ~/objects
+  void updateObjects(
+    std::vector<RecentPoint> & recent, double time, const rclcpp::Time & stamp, const Eigen::Vector3d & car);
 
   RosParams root_;
   std::string grid_frame_;
@@ -68,6 +80,18 @@ private:
   // The loaders before what they made: members go in reverse order
   pluginlib::ClassLoader<MapRepresentation> map_loader_;
   pluginlib::ClassLoader<PointFilter> filter_loader_;
+  pluginlib::ClassLoader<Clusterer> clusterer_loader_;
+  pluginlib::ClassLoader<Tracker> tracker_loader_;
+  std::shared_ptr<Clusterer> clusterer_;
+  std::shared_ptr<Tracker> tracker_;
+  double objects_window_ = 0.15;
+  double objects_range_ = 30.0;
+  std::vector<RecentPoint> recent_;
+  std::vector<Cluster> clusters_;
+  double objects_ms_ = 0.0;
+  rclcpp::Publisher<sac_perception_msgs::msg::TrackedObjects>::SharedPtr objects_publisher_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr markers_publisher_;
+  std::size_t markers_last_ = 0;
   SharedMap map_;
   VehicleBox vehicle_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr description_subscription_;

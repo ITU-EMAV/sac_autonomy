@@ -19,6 +19,7 @@ RollingGrid::RollingGrid(double size, double resolution)
     throw std::invalid_argument("grid resolution must be positive");
   }
   hit_scan_.assign(static_cast<std::size_t>(width_) * width_, 0);
+  free_time_.assign(static_cast<std::size_t>(width_) * width_, -std::numeric_limits<double>::infinity());
   ground_z_.assign(static_cast<std::size_t>(width_) * width_, std::numeric_limits<float>::quiet_NaN());
   ground_time_.assign(static_cast<std::size_t>(width_) * width_, 0.0);
 }
@@ -125,10 +126,18 @@ void RollingGrid::recenter(double x, double y)
     shift(layer.cells, 0.0f);
   }
   shift(hit_scan_, uint32_t{0});
+  shift(free_time_, -std::numeric_limits<double>::infinity());
   shift(ground_z_, std::numeric_limits<float>::quiet_NaN());
   shift(ground_time_, 0.0);
   origin_x_ += di * resolution_;
   origin_y_ += dj * resolution_;
+}
+
+double RollingGrid::lastFree(double x, double y) const
+{
+  int i = 0;
+  int j = 0;
+  return cell(x, y, i, j) ? free_time_[index(i, j)] : -std::numeric_limits<double>::infinity();
 }
 
 bool RollingGrid::cell(double x, double y, int & i, int & j) const
@@ -222,6 +231,7 @@ void RollingGrid::integrate(int layer_index, const Scan & scan)
         const int k = index(ci, cj);
         if (hit_scan_[k] != scan_counter_) {
           layer.cells[k] = std::max(lo, layer.cells[k] + layer.miss);
+          free_time_[k] = scan.time;
         }
       }
       if (at_end) {

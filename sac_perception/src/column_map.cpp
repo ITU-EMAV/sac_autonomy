@@ -30,6 +30,7 @@ void ColumnMap::initialize(const Params & params, const GridGeometry & geometry,
   blocks_ = (plane_->width() + kBlock - 1) / kBlock;
   block_full_.assign(static_cast<std::size_t>(blocks_) * blocks_, 0);
   block_seen_.assign(static_cast<std::size_t>(blocks_) * blocks_, -1.0f);
+  block_free_.assign(static_cast<std::size_t>(blocks_) * blocks_, -std::numeric_limits<float>::infinity());
 }
 
 void ColumnMap::markBlocks()
@@ -85,6 +86,7 @@ void ColumnMap::recenter(double x, double y)
   }
   columns_.swap(moved);
   std::fill(block_seen_.begin(), block_seen_.end(), -1.0f);  // the blocks moved: seen again next scan
+  std::fill(block_free_.begin(), block_free_.end(), -std::numeric_limits<float>::infinity());
   markBlocks();
 }
 
@@ -176,6 +178,9 @@ void ColumnMap::insert(int source_index, const Scan & scan)
       continue;
     }
     Column & column = columns_[plane_->index(i, j)];
+    if (!ray.hit) {
+      column.free = now;  // the ground: nothing standing on it
+    }
     if (ray.hit && ray.mark) {
       add(column, ray.end);
       if (std::isfinite(ray.ground_z)) {
@@ -259,6 +264,7 @@ void ColumnMap::insert(int source_index, const Scan & scan)
         const int b = (cj / kBlock) * blocks_ + ci / kBlock;
         block_seen_[b] = now;
         if (!block_full_[b]) {  // nothing to lower in this block: to where the ray leaves it
+          block_free_[b] = now;
           const int bi = (ci / kBlock) * kBlock;
           const int bj = (cj / kBlock) * kBlock;
           const float exit_i = cx > 0 ? (bi + kBlock - x0) / cx : (cx < 0 ? (bi - x0) / cx : inf);
@@ -296,11 +302,16 @@ void ColumnMap::insert(int source_index, const Scan & scan)
           const float z_min = std::min(za, zb);
           const float z_max = std::max(za, zb);
           bool emptied = false;
+          bool crossed = false;
           for (Element & element : column.elements) {
             if (element.hit_scan != scan_counter_ && crosses(element, z_min, z_max)) {
               element.log_odds += source.miss;
               emptied |= element.log_odds < kForget;
+              crossed = true;
             }
+          }
+          if (crossed) {
+            column.free = now;  // what was in the ray's way is not there now
           }
           if (emptied) {
             forget(column);
@@ -467,6 +478,37 @@ void ColumnMap::points(std::vector<MapPoint> & out) const
         for (float z : heights) {
           out.push_back({Eigen::Vector3f(x, y, z), occupancy, blocks, element.source});
         }
+      }
+    }
+  });
+}
+
+void ColumnMap::recent(double since, std::vector<RecentPoint> & out) const
+{
+  out.clear();
+  const float from = static_cast<float>(since - start_time_);
+  const double res = plane_->resolution();
+  forEachFull([&](int i, int j, int k) {
+    const Column & column = columns_[k];
+    float g = std::numeric_limits<float>::quiet_NaN();
+    bool looked = false;
+    for (const Element & element : column.elements) {
+      if (element.time < from) {
+        continue;
+      }
+      if (!looked) {
+        g = ground(k, i, j, time_);
+        looked = true;
+      }
+      if (rules_.blocks(g, element.lo, element.hi)) {
+        const float free = std::max(column.free, block_free_[(j / kBlock) * blocks_ + i / kBlock]);
+        out.push_back(
+          {Eigen::Vector2f(
+              static_cast<float>(plane_->originX() + (i + 0.5) * res),
+              static_cast<float>(plane_->originY() + (j + 0.5) * res)),
+            std::isnan(g) ? std::numeric_limits<float>::quiet_NaN() : element.hi - g,
+            start_time_ + element.time,
+            std::isfinite(free) ? start_time_ + free : -std::numeric_limits<double>::infinity()});
       }
     }
   });

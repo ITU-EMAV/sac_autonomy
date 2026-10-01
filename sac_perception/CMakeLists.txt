@@ -24,13 +24,15 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(sac_perception_msgs REQUIRED)
 find_package(urdf REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 
 # Core: grid and filters, no ROS
 add_library(sac_perception_core SHARED src/grid.cpp src/filters.cpp src/ground_patchwork.cpp
   src/map_representation.cpp src/column_map.cpp src/sparse_voxel.cpp
-  src/multi_level_surface.cpp)
+  src/multi_level_surface.cpp src/objects.cpp)
 target_include_directories(sac_perception_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
@@ -50,6 +52,8 @@ target_link_libraries(sac_perception_ros PUBLIC
   ${nav_msgs_TARGETS}
   ${diagnostic_msgs_TARGETS}
   ${std_msgs_TARGETS}
+  ${visualization_msgs_TARGETS}
+  ${sac_perception_msgs_TARGETS}
   urdf::urdf
   ament_index_cpp::ament_index_cpp)
 rclcpp_components_register_node(sac_perception_ros
@@ -72,7 +76,7 @@ install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_perception test/test_grid.cpp test/test_filters.cpp test/test_benchmark.cpp
-    test/test_sparse_voxel.cpp)
+    test/test_sparse_voxel.cpp test/test_objects.cpp)
   target_link_libraries(test_perception sac_perception_core)
   ament_add_gtest(test_robot_geometry test/test_robot_geometry.cpp)
   target_link_libraries(test_robot_geometry sac_perception_ros)
@@ -81,5 +85,5 @@ endif()
 ament_export_targets(export_sac_perception HAS_LIBRARY_TARGET)
 ament_export_dependencies(
   eigen3_cmake_module Eigen3 rclcpp rclcpp_components pluginlib tf2 tf2_ros tf2_eigen
-  sensor_msgs nav_msgs diagnostic_msgs std_msgs urdf ament_index_cpp)
+  sensor_msgs nav_msgs diagnostic_msgs std_msgs visualization_msgs sac_perception_msgs urdf ament_index_cpp)
 ament_package()
