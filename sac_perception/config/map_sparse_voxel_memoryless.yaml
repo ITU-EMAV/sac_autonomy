@@ -14,6 +14,7 @@
       level_gap: 1.0              # [m] a ground this far over a column's is another level
       ground_search_radius: 1.0   # [m] a column without ground takes a neighbour's
       ground_max_age: 3.0         # [s]
+      ground_cache_time: 0.5      # [s] a column's ground looked for again after this
     sources:
       roof_lidar:
         filters: [self, ground]   # no height_band: the map keeps what is over the car too

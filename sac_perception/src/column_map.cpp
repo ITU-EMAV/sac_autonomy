@@ -21,6 +21,7 @@ void ColumnMap::initialize(const Params & params, const GridGeometry & geometry,
   memory_ = params.getBool("memory", memory_);
   window_ = static_cast<float>(params.getDouble("window", window_));
   merge_rays_ = params.getBool("merge_rays", merge_rays_);
+  ground_cache_time_ = static_cast<float>(params.getDouble("ground_cache_time", ground_cache_time_));
   configure(params);
   plane_ = std::make_unique<RollingGrid>(geometry.size, geometry.resolution);
   plane_->setRecenterDistance(geometry.recenter_distance);
@@ -332,6 +333,18 @@ void ColumnMap::set(int source_index, double x, double y, float log_odds)
 
 float ColumnMap::ground(int k, int i, int j, double time) const
 {
+  const Column & column = columns_[k];
+  const float now = static_cast<float>(time - start_time_);
+  if (now >= column.ground_at && now - column.ground_at < ground_cache_time_) {
+    return column.ground;
+  }
+  column.ground = findGround(k, i, j, time);
+  column.ground_at = now;
+  return column.ground;
+}
+
+float ColumnMap::findGround(int k, int i, int j, double time) const
+{
   const double res = plane_->resolution();
   const double x = plane_->originX() + (i + 0.5) * res;
   const double y = plane_->originY() + (j + 0.5) * res;
@@ -351,7 +364,7 @@ float ColumnMap::columnGround(double x, double y) const
   if (!plane_->cell(x, y, i, j)) {
     return std::numeric_limits<float>::quiet_NaN();
   }
-  return ground(plane_->index(i, j), i, j, time_);
+  return findGround(plane_->index(i, j), i, j, time_);
 }
 
 std::vector<std::pair<float, float>> ColumnMap::column(double x, double y) const

@@ -31,8 +31,12 @@
 //          things, but what a sensor does not see now is gone
 // The ground map keeps its memory in both (the 2D lidar leans on it).
 //
-// Parameters (map.): memory (true), window [s] (0), merge_rays (true), the representation's
-// own, and the
+// The ground under a column with elements is looked for (its own cell, else the nearest within
+// ground_search_radius: 121 cells) once per `ground_cache_time` [s] (0.5), not at every
+// projection: it is held for seconds anyway (ground_max_age).
+//
+// Parameters (map.): memory (true), window [s] (0), merge_rays (true), ground_cache_time [s]
+// (0.5), the representation's own, and the
 // traversability rules (min_obstacle_height, max_from, clearance, max, max_step,
 // ground_search_radius, ground_max_age, level_gap). Each source keeps its own hit, miss,
 // clamps and decay (LayerParams) for the elements it saw last. A 2D grid from another node
@@ -96,6 +100,9 @@ protected:
     std::vector<Element> elements;
     float estimated_ground = std::numeric_limits<float>::quiet_NaN();  // from the ground filter
     float seen = -1.0f;  // [s] since the start: a ray passed or a point fell here
+    // The ground under it as last found, and when (found again after ground_cache_time)
+    mutable float ground = std::numeric_limits<float>::quiet_NaN();
+    mutable float ground_at = -std::numeric_limits<float>::infinity();
   };
   struct Source
   {
@@ -121,8 +128,12 @@ protected:
   float element_height_ = 0.2f;  // [m] the voxels' height, and the step of drawing
 
 private:
-  /// The ground under the column k at `time` (NaN: none known)
+  /// The ground under the column k at `time` (NaN: none known), as found within the last
+  /// ground_cache_time
   float ground(int k, int i, int j, double time) const;
+  /// The same, looked for now: its own cell, else the nearest within ground_search_radius,
+  /// else the ground filter's estimate
+  float findGround(int k, int i, int j, double time) const;
   void forget(Column & column);
   /// Which blocks of cells hold an element
   void markBlocks();
@@ -153,6 +164,7 @@ private:
   bool memory_ = true;
   float window_ = 0.0f;
   bool merge_rays_ = true;
+  float ground_cache_time_ = 0.5f;  // [s]
   int blocks_ = 0;                   // blocks across
   std::vector<uint8_t> block_full_;  // holds an element
   std::vector<float> block_seen_;    // [s] since the start: a ray crossed it
