@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -148,11 +149,22 @@ private:
 /// position, orientation (only when the message's frame is this filter's world frame).
 ///   linear_velocity_covariance, angular_velocity_covariance, position_covariance,
 ///   orientation_covariance: 3 variances instead of the message's
+///   velocity_from_pose (false): the velocities from consecutive poses (their motion in the
+///     body frame over the time between them, at its middle), for an odometry that gives no
+///     twist (a lidar odometry such as FAST-LIO, whose start is not this filter's): its own
+///     origin does not matter, only how it moved. `frame` names child_frame_id in this TF
+///     tree (FAST-LIO's "body" is its IMU's frame); messages closer than 0.02 s are skipped
 class OdometryAdapter : public TopicAdapter<nav_msgs::msg::Odometry>
 {
 protected:
   std::vector<std::string> defaultUse() const override { return {"linear_velocity", "angular_velocity"}; }
+  void configure(const Params & params) override;
   void convert(const nav_msgs::msg::Odometry & message) override;
+
+private:
+  bool velocity_from_pose_ = false;
+  std::optional<Eigen::Isometry3d> last_pose_;
+  Stamp last_stamp_ = 0;
 };
 
 /// geometry_msgs/TwistWithCovarianceStamped in its header frame. use: linear_velocity,

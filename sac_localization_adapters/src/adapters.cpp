@@ -397,8 +397,54 @@ void NonholonomicAdapter::tick()
 }
 
 // ---------------------------------------------------------------- odometry, twist, pose
+void OdometryAdapter::configure(const Params & params)
+{
+  velocity_from_pose_ = params.getBool("velocity_from_pose", velocity_from_pose_);
+}
+
 void OdometryAdapter::convert(const nav_msgs::msg::Odometry & m)
 {
+  if (velocity_from_pose_) {
+    // How it moved since the last pose, in the body frame, as a twist at the middle
+    Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
+    pose.translation() = Eigen::Vector3d(m.pose.pose.position.x, m.pose.pose.position.y, m.pose.pose.position.z);
+    pose.linear() = Eigen::Quaterniond(
+      m.pose.pose.orientation.w, m.pose.pose.orientation.x, m.pose.pose.orientation.y, m.pose.pose.orientation.z)
+      .normalized().toRotationMatrix();
+    const Stamp now = stamp(m.header.stamp);
+    const bool first = !last_pose_;
+    const double dt = first ? 0.0 : toSeconds(now - last_stamp_);
+    if (!first && dt < 0.02) {
+      return;
+    }
+    const Eigen::Isometry3d previous = first ? pose : *last_pose_;
+    last_pose_ = pose;
+    last_stamp_ = now;
+    if (first || dt > 0.5) {
+      return;  // nothing to compare with, or a gap
+    }
+    const Eigen::Isometry3d delta = previous.inverse() * pose;
+    const Eigen::Vector3d v = delta.translation() / dt;
+    const Eigen::Vector3d w = logSO3(Eigen::Quaterniond(delta.linear())) / dt;
+    const Stamp middle = now - static_cast<Stamp>(dt * 0.5e9);
+    Parts parts;
+    if (const auto mnt = mount(m.child_frame_id)) {
+      if (uses("linear_velocity")) {
+        if (auto R = noise("linear_velocity_covariance", block6(m.twist.covariance, 0, 0))) {
+          parts.add(std::make_shared<BodyVelocityModel>(*mnt), v, *R);
+        }
+      }
+      if (uses("angular_velocity")) {
+        if (auto R = noise("angular_velocity_covariance", block6(m.twist.covariance, 1, 1))) {
+          parts.add(std::make_shared<AngularVelocityModel>(Eigen::Quaterniond(mnt->linear())), w, *R);
+        }
+      }
+    }
+    if (!parts.empty()) {
+      send(parts.build(middle));
+    }
+    return;
+  }
   Parts parts;
   if (uses("linear_velocity") || uses("angular_velocity")) {
     if (const auto mnt = mount(m.child_frame_id)) {

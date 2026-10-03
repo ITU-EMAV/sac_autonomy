@@ -126,7 +126,9 @@ public:
 /// the car drives) has a moving centre but takes no cell that was free. The free cells are
 /// needed in a row to start moving; once moving, a track stays so while it is faster than
 /// moving_speed and took fresh cells within the last 1.5 s (no flicker scan by scan). The
-/// planner yields to a small object with a sure speed without waiting for this. A cluster much
+/// planner yields to a small object with a sure speed without waiting for this. A cluster with
+/// no height known (a planar lidar's points alone: where its plane meets a road rising ahead,
+/// a line sliding with the car) or lower than `min_height` [m] (0.3) is not moving. A cluster much
 /// longer than wide is trusted across, hardly along (its ends are where the view ends). A cluster is used once: a grid published at
 /// 20 Hz holds a 10 Hz lidar's scan twice, a track takes a cluster only if it is newer than
 /// its last. Structures are followed for their place, with no speed.
@@ -153,6 +155,7 @@ private:
   float initial_speed_ = 3.0f;  // [m/s] 1-sigma of a new track's speed
   float min_fresh_ = 0.1f;
   float fresh_time_ = 0.3f;
+  float min_height_ = 0.3f;
   std::vector<Track> tracks_;
   uint32_t next_id_ = 1;
 };

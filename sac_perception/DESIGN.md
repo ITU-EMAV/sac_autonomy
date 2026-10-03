@@ -271,6 +271,37 @@ barriers): the grid stops the planner for them anyway; the objects are for what 
 Not caught by the free-space test: a car driving away (the space it moves into is hidden
 behind it); cells it leaves free would tell.
 
+## Closer to the real car: own localization, a spinning lidar
+Everything above ran on Gazebo's exact pose (`ground_truth_tf`). With the car's own
+localization (`ground_truth_tf:=false`, sac_localization) the same crossing lap stopped the
+car 33 times with nobody near (85 s), against 2. The local odometry (IMU, wheels), measured
+against the truth over 1 s: 0.25 m median, 1.8 m p95; the grid in odom moves with it, and
+standing things land on cells known free.
+- `lidar_distortion:=true` (gazebo_environment `lidar_filter`): Gazebo's lidar scans in an
+  instant; a VLP-16 turns in 0.1 s. The cloud is now stamped at the scan's start, each point
+  with its `time` and seen from where the sensor was then. Without that FAST-LIO "deskewed"
+  a turn that never was (its yaw 10 times worse than the gyro's)
+- `deskew` (pointcloud sources, on with a `time` field): each point put where the car was at
+  its time (TF in 5 ms slices); the message waits for TF to the scan's end
+- FAST-LIO2 in the local filter (sac_localization `lidar_odometry:=fast_lio`): the odometry's
+  1 s error 0.25 / 1.76 m -> 0.16 / 0.96 m (median / p95)
+- the objects stopping the car were then nearly all the front 2D lidar's: no height, thin,
+  2-8 m/s across, 7-17 m ahead: its plane meeting a road rising ahead, a line sliding with
+  the car; the shared ground map that drops such returns holds heights in odom, which does
+  not follow climbs (no height sensor). A cluster with no height, or lower than
+  `min_height` (0.3 m), is not moving: a person within 30 m is seen by the roof lidar too
+
+| Crossing lap, own localization | IMU + wheels | + spinning lidar, deskew, FAST-LIO | + no moving without height |
+|---|---|---|---|
+| stops with nobody within 30 m | 33 (85 s) | 31 (70 s) | 6 (11 s) |
+| messages with another moving object | - | 54 % | 24 % |
+| walkers first moving, car this far | - | 16-28 m | 25-30 m |
+| closest, car's body to a person | 4.0-6.0 m | 2.4-9.9 m | 2.4-4.4 m |
+
+Left: a person's track breaks up (7-17 ids a crossing, 1 on the exact pose) and its speed is
+off by 0.5-1.1 m/s, the runner was moving only 6 m ahead (passed 3.3 m away at 6.4 m/s): the
+odometry's height and tilt, next.
+
 ## The shared ground map
 Sources that find the ground write its height into the grid (`provides_ground`); sources that
 cannot tell the ground from an obstacle read it (`ground_margin`): the front 2D lidar's plane

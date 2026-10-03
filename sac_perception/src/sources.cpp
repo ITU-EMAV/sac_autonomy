@@ -185,6 +185,8 @@ void PointCloudSource::configure(const RosParams & params)
   clear_height_ = static_cast<float>(params.getDouble("clear_height", clear_height_));
   max_clear_range_ = static_cast<float>(params.getDouble("max_clear_range", max_clear_range_));
   clear_ = params.getBool("clear", clear_);
+  deskew_ = params.getBool("deskew", deskew_);
+  scan_period_ = params.getDouble("scan_period", scan_period_);
   if (params.getBool("debug_cloud", false)) {
     debug_publisher_ = context_.node->create_publisher<sensor_msgs::msg::PointCloud2>(
       "~/" + name_ + "/labelled", rclcpp::SensorDataQoS());
@@ -205,7 +207,14 @@ void PointCloudSource::subscribe(const std::string & topic)
   subscription_ = context_.node->create_subscription<sensor_msgs::msg::PointCloud2>(
     topic, rclcpp::SensorDataQoS(),
     [this](const sensor_msgs::msg::PointCloud2::ConstSharedPtr & m) {
-      defer(m->header.frame_id, rclcpp::Time(m->header.stamp), [this, m]() { onCloud(m); });
+      bool timed = false;
+      for (const auto & field : m->fields) {
+        timed |= field.name == "time" && field.datatype == sensor_msgs::msg::PointField::FLOAT32;
+      }
+      // A deskewed scan needs the car's pose until its last point
+      const rclcpp::Time until = rclcpp::Time(m->header.stamp) +
+        rclcpp::Duration::from_seconds(deskew_ && timed ? scan_period_ : 0.0);
+      defer(m->header.frame_id, until, [this, m]() { onCloud(m); });
     });
 }
 
@@ -230,8 +239,30 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
   const std::size_t n = static_cast<std::size_t>(message->width) * message->height;
   cloud.resize(n);
   bool has_intensity = false;
+  bool has_time = false;
   for (const auto & field : message->fields) {
     has_intensity |= field.name == "intensity" && field.datatype == sensor_msgs::msg::PointField::FLOAT32;
+    has_time |= field.name == "time" && field.datatype == sensor_msgs::msg::PointField::FLOAT32;
+  }
+  // Deskewing: base_footprint at the stamp <- base_footprint at a point's time, per 5 ms slice
+  const bool deskew = deskew_ && has_time;
+  constexpr double kSlice = 0.005;
+  std::vector<std::optional<Eigen::Isometry3f>> slices;
+  const Eigen::Isometry3f base_inverse = base->inverse();
+  auto motion = [&](float time) -> const std::optional<Eigen::Isometry3f> & {
+    const std::size_t k = static_cast<std::size_t>(std::clamp(time, 0.0f, 1.0f) / kSlice);
+    if (k >= slices.size()) {
+      slices.resize(k + 1);
+    }
+    if (!slices[k]) {
+      const auto at = baseInGrid(stamp + rclcpp::Duration::from_seconds((k + 0.5) * kSlice));
+      slices[k] = at ? base_inverse * *at : Eigen::Isometry3f::Identity();
+    }
+    return slices[k];
+  };
+  std::optional<sensor_msgs::PointCloud2ConstIterator<float>> point_time;
+  if (deskew) {
+    point_time.emplace(*message, "time");
   }
   std::vector<float> intensity;
   if (has_intensity) {
@@ -248,10 +279,14 @@ void PointCloudSource::onCloud(const sensor_msgs::msg::PointCloud2::ConstSharedP
       if (i) {
         intensity[count] = **i;
       }
-      cloud.points[count++] = *sensor * Eigen::Vector3f(*x, *y, *z);
+      const Eigen::Vector3f p = *sensor * Eigen::Vector3f(*x, *y, *z);
+      cloud.points[count++] = deskew ? Eigen::Vector3f(*motion(**point_time) * p) : p;
     }
     if (i) {
       ++*i;
+    }
+    if (point_time) {
+      ++*point_time;
     }
   }
   cloud.resize(count);  // resize() resets the labels; the points stay

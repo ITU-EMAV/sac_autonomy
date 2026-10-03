@@ -309,6 +309,7 @@ void KalmanTracker::initialize(const Params & params)
   initial_speed_ = static_cast<float>(params.getDouble("initial_speed", initial_speed_));
   min_fresh_ = static_cast<float>(params.getDouble("min_fresh", min_fresh_));
   fresh_time_ = static_cast<float>(params.getDouble("fresh_time", fresh_time_));
+  min_height_ = static_cast<float>(params.getDouble("min_height", min_height_));
 }
 
 void KalmanTracker::predict(Track & track, double time) const
@@ -451,7 +452,13 @@ void KalmanTracker::update(const std::vector<Cluster> & clusters, double time)
     track.moving = false;
     const bool fresh = track.fresh_last >= 0.0 && time - track.fresh_last <= 0.5 &&
       track.fresh_last - track.fresh_since >= fresh_time_ - 1e-6;
-    if (track.confirmed && fresh && track.last.classification != ObjectClass::kStructure && speed > moving_speed_) {
+    // Seen with a height (a 3D sensor, or a camera, saw it over the ground): a cluster of a
+    // planar lidar alone may be where its plane meets a road rising ahead, a line sliding with
+    // the car
+    const bool seen_high = std::isfinite(track.last.height) && track.last.height >= min_height_;
+    if (track.confirmed && fresh && seen_high && track.last.classification != ObjectClass::kStructure &&
+      speed > moving_speed_)
+    {
       const Eigen::Vector2f u = v / speed;
       const float sigma = std::sqrt(std::max(0.0f, u.dot(track.P.bottomRightCorner<2, 2>() * u)));
       track.moving = speed - 2.0f * sigma > 0.5f * moving_speed_;

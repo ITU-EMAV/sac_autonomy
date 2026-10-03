@@ -299,3 +299,24 @@ TEST(Objects, APersonIsACircle)
   EXPECT_NEAR(out[0].length, 0.5f, 0.05f);           // its diameter
   EXPECT_LT((out[0].centre - Eigen::Vector2f(10.0f, 0.0f)).norm(), 0.26f);  // at most its radius off
 }
+
+TEST(Objects, WhatHasNoHeightDoesNotMove)
+{
+  // A 2D lidar's plane meeting the road ahead: a thin line, no height, sliding across cells
+  // known free at 6 m/s
+  KalmanTracker tracker;
+  MapParams none;
+  tracker.initialize(none);
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  for (int k = 0; k <= 30; ++k) {
+    const double t = 0.1 * k;
+    std::vector<RecentPoint> points;
+    for (float u = 0.0f; u <= 0.6f; u += 0.2f) {
+      points.push_back({Eigen::Vector2f(12.0f + u, -4.0f + 6.0f * static_cast<float>(t)), nan, t, true});
+    }
+    tracker.update(clusters(points), t);
+    for (const Track & track : tracker.tracks()) {
+      EXPECT_FALSE(track.moving) << t;
+    }
+  }
+}

@@ -166,6 +166,11 @@ private:
 ///   clear_height [m] (0.3), max_clear_range [m] (40), clear (true)
 ///   debug_cloud (false): publish the filtered points on ~/<name>/labelled (base_footprint;
 ///     fields x, y, z, label 0 obstacle / 1 ground / 2 dropped, height over the ground)
+///   deskew (true): a spinning lidar sees each point at its own time over its turn (a VLP-16:
+///     0.1 s, a metre at 10 m/s); with a float32 `time` field (seconds from the stamp, the
+///     scan's start, as the Velodyne driver gives it) each point is put where the car was
+///     then: in base_footprint at the stamp, by grid <- base at its time (TF, in 5 ms
+///     slices). The message waits for TF up to the stamp + `scan_period` [s] (0.1)
 class PointCloudSource : public GridSource
 {
 protected:
@@ -190,6 +195,8 @@ private:
   float clear_height_ = 0.3f;
   float max_clear_range_ = 40.0f;
   bool clear_ = true;
+  bool deskew_ = true;
+  double scan_period_ = 0.1;
 };
 
 /// sensor_msgs/Image depth (a depth camera: 32FC1 [m] or 16UC1 [mm]) with its

@@ -15,7 +15,7 @@ Arguments:
   local_planner:=true  drive around obstacles: sac_local_planner follows the route around
                        the grid's obstacles (or stops before them) and the controller drives
                        its trajectory; starts the perception too
-  estimator:=, motion_model:=
+  estimator:=, motion_model:=, lidar_odometry:=
                        passed to the localization (see sac_localization's launch file)
   site:=sonoma         site config sac_planning/config/<site>.yaml (datum and default route)
   route:=<file>        another route of the site (a path, or a file in sac_planning/routes)
@@ -121,6 +121,7 @@ def generate_launch_description():
             DeclareLaunchArgument("localization", default_value="false"),
             DeclareLaunchArgument("estimator", default_value=""),
             DeclareLaunchArgument("motion_model", default_value=""),
+            DeclareLaunchArgument("lidar_odometry", default_value=""),
             DeclareLaunchArgument("perception", default_value="false"),
             DeclareLaunchArgument("local_planner", default_value="false"),
             DeclareLaunchArgument("perception_map", default_value=""),
@@ -133,6 +134,7 @@ def generate_launch_description():
                     "use_sim_time": LaunchConfiguration("use_sim_time"),
                     "estimator": LaunchConfiguration("estimator"),
                     "motion_model": LaunchConfiguration("motion_model"),
+                    "lidar_odometry": LaunchConfiguration("lidar_odometry"),
                 }.items(),
                 condition=IfCondition(LaunchConfiguration("localization")),
             ),

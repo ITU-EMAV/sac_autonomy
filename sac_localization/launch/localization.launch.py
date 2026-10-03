@@ -7,6 +7,10 @@ Arguments:
   motion_model:=...       constant_acceleration (the config's, default) | imu_driven |
                           kinematic_bicycle | dynamic_bicycle;
                           other models also load config/models/<model>.yaml
+  lidar_odometry:=fast_lio
+                          also run FAST-LIO2 (external/FAST_LIO_ROS2, GPL-2.0, its own process)
+                          with config/fast_lio/<config>.yaml, its motion a velocity input of
+                          the local filter (config/lio/<config>_local.yaml)
 
   ros2 launch sac_localization localization.launch.py use_sim_time:=true estimator:=ukf
 """
@@ -26,6 +30,7 @@ def nodes(context):
     estimator = LaunchConfiguration("estimator").perform(context)
     motion_model = LaunchConfiguration("motion_model").perform(context)
     use_sim_time = LaunchConfiguration("use_sim_time").perform(context).lower() == "true"
+    lidar_odometry = LaunchConfiguration("lidar_odometry").perform(context)
 
     overrides = {"use_sim_time": use_sim_time}
     if estimator:
@@ -34,7 +39,23 @@ def nodes(context):
     if motion_model and motion_model != "constant_acceleration":
         overlay = [os.path.join(share, "config", "models", f"{motion_model}.yaml")]
 
-    return [
+    extra = []
+    if lidar_odometry == "fast_lio":
+        overlay.append(os.path.join(share, "config", "lio", f"{config}_local.yaml"))
+        extra.append(
+            Node(
+                package="fast_lio",
+                executable="fastlio_mapping",
+                name="fast_lio",
+                output="screen",
+                parameters=[os.path.join(share, "config", "fast_lio", f"{config}.yaml"), {"use_sim_time": use_sim_time}],
+                remappings=[("/Odometry", "/sac/localization/lio/odometry"), ("/path", "/sac/localization/lio/path")],
+            )
+        )
+    elif lidar_odometry:
+        raise RuntimeError(f"lidar_odometry: fast_lio or nothing, not '{lidar_odometry}'")
+
+    return extra + [
         Node(
             package="sac_localization",
             executable="localization_node",
@@ -53,6 +74,7 @@ def generate_launch_description():
             DeclareLaunchArgument("config", default_value="sim"),
             DeclareLaunchArgument("estimator", default_value=""),
             DeclareLaunchArgument("motion_model", default_value=""),
+            DeclareLaunchArgument("lidar_odometry", default_value=""),
             OpaqueFunction(function=nodes),
         ]
     )
