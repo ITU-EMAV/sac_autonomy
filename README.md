@@ -11,16 +11,30 @@ topics and frames below, so the same code runs on the real car and in the simula
 Both workspaces include this repository as a git submodule under `src/`.
 
 ## Packages
+Packages are kept by what they do; a new one goes next to its kind (colcon finds them at any
+depth):
+
+```
+core/                    the autonomy itself
+  perception/            sac_perception
+  localization/          sac_localization, sac_localization_adapters
+  planning/              sac_planning, sac_local_planner
+  control/               sac_control
+interfaces/              the message packages: sac_localization_msgs, sac_perception_msgs,
+                         sac_planning_msgs
+utilities/               sac_bringup (launch), sac_description (the car's model)
+```
+
 | Package | Content |
 |---|---|
-| `sac_description` | URDF of the car: dimensions, limits, roof rack and sensor frames. The one model of the car; the simulation adds its Gazebo sensors on top of it. |
+| `sac_perception` | the local occupancy grid around the car, from any number of sensors set in YAML (3D and 2D lidars, depth cameras, other nodes' grids), with exchangeable map representations, ground segmentation and point filters as plugins. See [DESIGN.md](core/perception/sac_perception/DESIGN.md). |
+| `sac_localization`, `sac_localization_adapters` | state estimation configured from YAML: any number of sensors, exchangeable engines (`ekf`, `iekf`, `ukf`) and motion models (`constant_acceleration`, `imu_driven`, `kinematic_bicycle`, `dynamic_bicycle`) as plugins; a local (`odom`) and a global (`map`) filter. See [DESIGN.md](core/localization/sac_localization/DESIGN.md). |
 | `sac_planning` | the path to follow. Method so far: `route_planner`, a route given on the world map (latitude/longitude waypoints, see [Routes](#routes)). |
+| `sac_local_planner` | the local planner: follows the route around the grid's obstacles with candidate paths in the route's Frenet frame (generator and cost functions as plugins), stops before what it cannot pass, publishes a trajectory with speeds. See [DESIGN.md](core/planning/sac_local_planner/DESIGN.md). |
 | `sac_control` | follows the path: `pure_pursuit` (steering) with a speed profile from the path's curvature |
-| `sac_bringup` | `autonomy.launch.py`: planning and control together |
-| `sac_localization`, `sac_localization_adapters`, `sac_localization_msgs` | state estimation configured from YAML: any number of sensors, exchangeable engines (`ekf`, `iekf`, `ukf`) and motion models (`constant_acceleration`, `imu_driven`, `kinematic_bicycle`, `dynamic_bicycle`) as plugins; a local (`odom`) and a global (`map`) filter. See [DESIGN.md](sac_localization/DESIGN.md). |
-| `sac_perception` | the local occupancy grid around the car, from any number of sensors set in YAML (3D and 2D lidars, depth cameras, other nodes' grids), with exchangeable ground segmentation and point filters as plugins. See [DESIGN.md](sac_perception/DESIGN.md). |
-
-| `sac_local_planner`, `sac_planning_msgs` | the local planner: follows the route around the grid's obstacles with candidate paths in the route's Frenet frame (generator and cost functions as plugins), stops before what it cannot pass, publishes a trajectory with speeds. See [DESIGN.md](sac_local_planner/DESIGN.md). |
+| `sac_localization_msgs`, `sac_perception_msgs`, `sac_planning_msgs` | the messages of the packages above |
+| `sac_bringup` | `autonomy.launch.py`: planning, control, and optionally localization, perception and the local planner |
+| `sac_description` | URDF of the car: dimensions, limits, roof rack and sensor frames. The one model of the car; the simulation adds its Gazebo sensors on top of it. |
 
 What belongs here: anything that runs from topics alone. Anything that opens a device, a
 serial port or a network socket to hardware belongs in `sac_drivers`; anything Gazebo-specific
@@ -51,14 +65,14 @@ controller drives it.
 ```bash
 ros2 launch sac_bringup autonomy.launch.py use_sim_time:=true local_planner:=true
 ```
-The car drives the site's route (`sac_planning/config/<site>.yaml`, default `site:=sonoma`);
+The car drives the site's route (`core/planning/sac_planning/config/<site>.yaml`, default `site:=sonoma`);
 a loop is driven lap after lap, an open route to its end. Speed limits and the lookahead are
-in `sac_control/config/pure_pursuit.yaml` (10 m/s, 3 m/s^2 in corners by default). Stop it
+in `core/control/sac_control/config/pure_pursuit.yaml` (10 m/s, 3 m/s^2 in corners by default). Stop it
 with Ctrl+C: the car gets a stop command.
 
 ## Routes
 A route is a list of waypoints on the world map, so the same file works in the simulation and
-on the real car. Files live in `sac_planning/routes/`:
+on the real car. Files live in `core/planning/sac_planning/routes/`:
 - `.geojson`: a LineString, or Point features in driving order. Draw one on
   [geojson.io](https://geojson.io) (satellite view, "Draw a LineString") and save it.
 - `.csv`: one `latitude,longitude` per line.

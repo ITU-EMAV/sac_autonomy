@@ -19,7 +19,7 @@
     publish_map: true             # what the map holds on /sac/perception/map, to look at
     publish_map_rate: 5.0         # [Hz]
     objects:                      # what was seen lately, clustered and followed: /sac/perception/objects
-      enabled: true
+      enabled: false              # off for now: the static obstacles first (the grid); pedestrians later
       window: 0.15                # [s] a 10 Hz lidar's last scan
       max_range: 40.0             # [m] from the car: at 10 m/s a crossing person must be moving 20 m out
       clusterer:
