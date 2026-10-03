@@ -101,6 +101,15 @@ localization_global:
       tf: true
       # map -> odom from the local filter's estimate at the same instant
       local_odometry: /sac/localization/odometry_local
+      # map -> odom takes GNSS's corrections slowly, not as jumps (the route, in map, against
+      # the perception's grid, in odom); the odometry output keeps the estimate as it is
+      tf_smoothing:
+        # Off: limiting how fast the car's place in map follows the estimate made it worse here
+        # (p95 0.40 -> 3.29 m off the truth): the local odometry drifts up to 4 % at times,
+        # faster than any limit that still smooths GNSS (outputs.hpp)
+        max_speed: 0.0            # [m/s] 0: off
+        max_turn_rate: 0.0175     # [rad/s] 1 deg/s
+        snap_distance: 5.0        # [m] a larger correction (a new initial pose) at once
       odometry: /sac/localization/odometry
       fix: /sac/localization/fix
       status: /sac/localization/status

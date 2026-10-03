@@ -1,5 +1,6 @@
 #include "sac_localization/ros/outputs.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <deque>
 #include <optional>
@@ -71,8 +72,11 @@ public:
   /// chain map -> odom -> base that consumers read is off by the car's motion in between
   /// (metres at speed when the local estimate changes quickly). Its messages are buffered and
   /// interpolated, or extrapolated a little with their twist when the stamp is newer.
-  TfOutput(rclcpp::Node & node, const AdapterContext & context, std::string odom_frame, const std::string & local_odometry)
-  : node_(node), context_(context), odom_frame_(std::move(odom_frame)), broadcaster_(node)
+  TfOutput(
+    rclcpp::Node & node, const AdapterContext & context, std::string odom_frame, const std::string & local_odometry,
+    double max_speed, double max_turn_rate, double snap_distance)
+  : node_(node), context_(context), odom_frame_(std::move(odom_frame)), broadcaster_(node),
+    max_speed_(max_speed), max_turn_rate_(max_turn_rate), snap_distance_(snap_distance)
   {
     if (context_.world_frame != odom_frame_ && !local_odometry.empty()) {
       local_ = node.create_subscription<nav_msgs::msg::Odometry>(
@@ -104,12 +108,63 @@ public:
         return;
       }
       t.child_frame_id = odom_frame_;
-      t.transform = tf2::eigenToTransform(world_base * odom_base->inverse()).transform;
+      t.transform = tf2::eigenToTransform(smooth(world_base, *odom_base, out.belief.stamp)).transform;
     }
     broadcaster_.sendTransform(t);
   }
 
 private:
+  /// map -> odom such that the car's pose in map (map -> odom -> base) moves from where the
+  /// last published map -> odom shows it towards the estimate at most max_speed and
+  /// max_turn_rate, in the plane (x, y, yaw), about the car: limiting map -> odom itself would
+  /// limit corrections at odom's origin, which may be a kilometre behind (a tenth of a degree
+  /// of yaw there moves map -> odom by 1.7 m). Height, roll and pitch go through at once (odom
+  /// may not follow climbs). Without smoothing, at the start, after a jump back in time, or for
+  /// a correction over snap_distance: the estimate's map -> odom as it is.
+  Eigen::Isometry3d smooth(const Eigen::Isometry3d & world_base, const Eigen::Isometry3d & odom_base, Stamp stamp)
+  {
+    const Eigen::Isometry3d target = world_base * odom_base.inverse();
+    if (max_speed_ <= 0.0 || !published_ || stamp <= published_stamp_) {
+      published_ = target;
+      published_stamp_ = stamp;
+      return target;
+    }
+    const double dt = toSeconds(stamp - published_stamp_);
+    // Yaw, pitch, roll (z-y-x) of a rotation
+    auto ypr = [](const Eigen::Matrix3d & r) {
+      return Eigen::Vector3d(
+        std::atan2(r(1, 0), r(0, 0)), std::asin(std::clamp(-r(2, 0), -1.0, 1.0)), std::atan2(r(2, 1), r(2, 2)));
+    };
+    const Eigen::Isometry3d shown = *published_ * odom_base;  // the car as map -> odom shows it now
+    const Eigen::Vector3d shown_ypr = ypr(shown.linear());
+    const Eigen::Vector3d target_ypr = ypr(world_base.linear());
+    // The correction in the plane, in the car's heading
+    const double c = std::cos(shown_ypr.x());
+    const double s = std::sin(shown_ypr.x());
+    const Eigen::Vector2d d = world_base.translation().head<2>() - shown.translation().head<2>();
+    Eigen::Vector2d along(c * d.x() + s * d.y(), -s * d.x() + c * d.y());
+    if (along.norm() > snap_distance_) {
+      published_ = target;
+      published_stamp_ = stamp;
+      return target;
+    }
+    const double step = max_speed_ * dt;
+    if (along.norm() > step) {
+      along *= step / along.norm();
+    }
+    const double turn = max_turn_rate_ * dt;
+    const double yaw = shown_ypr.x() + std::clamp(std::remainder(target_ypr.x() - shown_ypr.x(), 2.0 * M_PI), -turn, turn);
+    Eigen::Isometry3d car = Eigen::Isometry3d::Identity();
+    car.translation().head<2>() = shown.translation().head<2>() + Eigen::Vector2d(c * along.x() - s * along.y(), s * along.x() + c * along.y());
+    car.translation().z() = world_base.translation().z();
+    car.linear() = (Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ()) *
+      Eigen::AngleAxisd(target_ypr.y(), Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(target_ypr.z(), Eigen::Vector3d::UnitX())).toRotationMatrix();
+    published_ = car * odom_base.inverse();
+    published_stamp_ = stamp;
+    return *published_;
+  }
+
   static Stamp stampOf(const nav_msgs::msg::Odometry & m)
   {
     return static_cast<Stamp>(m.header.stamp.sec) * 1000000000LL + m.header.stamp.nanosec;
@@ -162,6 +217,11 @@ private:
   tf2_ros::TransformBroadcaster broadcaster_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr local_;
   std::deque<nav_msgs::msg::Odometry> local_poses_;
+  double max_speed_ = 0.0;
+  double max_turn_rate_ = 0.0;
+  double snap_distance_ = 5.0;
+  std::optional<Eigen::Isometry3d> published_;
+  Stamp published_stamp_ = 0;
 };
 
 // ---------------------------------------------------------------- odometry
@@ -378,7 +438,10 @@ std::vector<std::unique_ptr<Output>> makeOutputs(
   std::vector<std::unique_ptr<Output>> outputs;
   if (params.getBool("outputs.tf", true)) {
     outputs.push_back(std::make_unique<TfOutput>(
-      node, context, params.getString("odom_frame", "odom"), params.getString("outputs.local_odometry", "")));
+      node, context, params.getString("odom_frame", "odom"), params.getString("outputs.local_odometry", ""),
+      params.getDouble("outputs.tf_smoothing.max_speed", 0.0),
+      params.getDouble("outputs.tf_smoothing.max_turn_rate", 0.02),
+      params.getDouble("outputs.tf_smoothing.snap_distance", 5.0)));
   }
   const std::string odometry = params.getString("outputs.odometry", "");
   if (!odometry.empty()) {

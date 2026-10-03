@@ -4,6 +4,13 @@
 //   local_odometry: <topic>
 //                        global filter: the local filter's odometry, to compute map -> odom
 //                        with odom -> base at exactly the same time (else from TF at that time)
+//   tf_smoothing: (global filter) the car's place in map (map -> odom -> base) moves to the
+//                        estimate at most this fast, in the plane, about the car (REP 105:
+//                        odom is smooth, map -> odom takes the corrections): GNSS noise as a
+//                        slow drift, not as jumps. Only as good as odom: where odom drifts
+//                        faster than max_speed the car loses its place in map.
+//     max_speed [m/s] (0: off), max_turn_rate [rad/s], snap_distance [m] (a correction
+//     larger than this, e.g. a new initial pose, is taken at once)
 //   odometry: <topic>    nav_msgs/Odometry: pose, twist and covariance in world_frame
 //   fix: <topic>         sensor_msgs/NavSatFix: the estimate as latitude/longitude (needs a datum)
 //   status: <topic>      sac_localization_msgs/FilterStatus: per sensor accepted/rejected,
