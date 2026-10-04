@@ -152,3 +152,22 @@ here take `use_sim_time` as a parameter and never assume either.
 colcon build --symlink-install --packages-up-to sac_description
 ros2 launch sac_description display.launch.py   # the model in RViz, with joint sliders
 ```
+
+## Runtime assets
+
+Models and point-cloud maps are distributed through the
+[runtime-assets-v1 release](https://github.com/ITU-EMAV/sac_autonomy/releases/tag/runtime-assets-v1).
+To clone the repository and install the assets in one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ITU-EMAV/sac_autonomy/main/setup.sh | bash -s -- ~/sac_autonomy
+```
+
+For an existing clone, run before building:
+
+```bash
+./utilities/tools/download_assets.sh
+```
+
+The installer verifies SHA-256 checksums and places the files in their package
+directories. Large model and PCD files stay outside Git history.
