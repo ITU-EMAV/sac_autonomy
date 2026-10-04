@@ -171,3 +171,25 @@ For an existing clone, run before building:
 
 The installer verifies SHA-256 checksums and places the files in their package
 directories. Large model and PCD files stay outside Git history.
+
+## Current vehicle launch sequence
+
+With the sensor drivers running and the workspace sourced, start these launches
+in separate terminals:
+
+```bash
+ros2 launch smart_car_launch localization.launch.py
+ros2 launch jetson_perception perception.launch.py
+ros2 launch smart_car_launch lidar_perception.launch.py
+ros2 launch planner planner_composable_launch.launch.py
+```
+
+The localization launch starts the configured map providers and Autoware
+localization nodes. LiDAR perception starts `ground_segmentation` and
+`object_clustering`; the planner also starts its controller. Their SAC and
+Autoware dependencies must be available even when they are not launched manually.
+
+Localization and planning share
+`utilities/smart_car_launch/config/maps/map_config.yaml`, currently selecting
+`campus_map/map.pcd` and `campus_map/lane.osm`. The default clock setting is
+`use_sim_time: false` in `utilities/smart_car_launch/config/use_sim_time.yaml`.
