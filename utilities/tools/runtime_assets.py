@@ -5,6 +5,7 @@ import hashlib
 import io
 from pathlib import Path, PurePosixPath
 import shutil
+import stat
 import tarfile
 
 ASSET_ROOTS = (
@@ -105,6 +106,8 @@ def extract(archive, repo):
             try:
                 with source.extractfile(name) as stream, temporary.open('wb') as output:
                     shutil.copyfileobj(stream, output)
+                if target.exists():
+                    temporary.chmod(stat.S_IMODE(target.stat().st_mode))
                 temporary.replace(target)
             finally:
                 temporary.unlink(missing_ok=True)
