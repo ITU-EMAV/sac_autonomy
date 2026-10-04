@@ -1,0 +1,6 @@
+apt'tan gelen ros-humble-autoware-localization-msgs (1.13.0) kullaniliyor.
+Bu kaynak surumde srv/ dizini YOK; overlay apt'i golgeleyince
+InitializeLocalization servis tipi kayboluyor ve hem
+autoware_pose_initializer hem sac_pose_initializer
+"undefined symbol: get_service_type_support_handle<...InitializeLocalization>"
+ile cokuyordu.

@@ -1,0 +1,71 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="smart_car_tf">
+
+  <!--============================================-->
+  <!-- Frame names -->
+  <!--============================================-->
+  <xacro:property name="base_frame"     value="base_link"/>
+  <xacro:property name="camera_frame"   value="camera_link"/>
+  <xacro:property name="velodyne_frame" value="velodyne"/>
+
+  <!--============================================-->
+  <!-- Offsets (meters / radians) – tweak these! -->
+  <!--============================================-->
+  <!-- The car’s base_link sits at its midpoint on the ground plane -->
+  <xacro:property name="cam_xyz"   value="0.4  0.0  1.2"/>   <!-- front center, 1.2 m up -->
+  <xacro:property name="cam_rpy"   value="0 0 0"/>         <!-- level with ground -->
+
+  <!-- Velodyne sits dead-center on the roof, tilted down 0.25 rad -->
+  <xacro:property name="vel_xyz"   value="0.0  0.0  1.5"/>  <!-- adjust height to your roof height -->
+  <xacro:property name="vel_rpy"   value="0  0  0"/>    <!-- tilt forward 0.25 rad -->
+
+  <!--============================================-->
+  <!-- Base link (light inertia so RSP will publish it) -->
+  <!--============================================-->
+  <link name="${base_frame}">
+    <inertial>
+      <mass value="1e-3"/>
+      <inertia
+        ixx="1e-6" ixy="0.0" ixz="0.0"
+        iyy="1e-6" iyz="0.0"
+        izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <!--============================================-->
+  <!-- Camera frame -->
+  <!--============================================-->
+  <link name="${camera_frame}">
+    <inertial>
+      <mass value="1e-4"/>
+      <inertia
+        ixx="1e-7" ixy="0.0" ixz="0.0"
+        iyy="1e-7" iyz="0.0"
+        izz="1e-7"/>
+    </inertial>
+  </link>
+  <joint name="base_to_camera" type="fixed">
+    <parent link="${base_frame}"/>
+    <child  link="${camera_frame}"/>
+    <origin xyz="${cam_xyz}" rpy="${cam_rpy}"/>
+  </joint>
+
+  <!--============================================-->
+  <!-- Velodyne frame -->
+  <!--============================================-->
+  <link name="${velodyne_frame}">
+    <inertial>
+      <mass value="1e-3"/>
+      <inertia
+        ixx="1e-6" ixy="0.0" ixz="0.0"
+        iyy="1e-6" iyz="0.0"
+        izz="1e-6"/>
+    </inertial>
+  </link>
+  <joint name="base_to_velodyne" type="fixed">
+    <parent link="${base_frame}"/>
+    <child  link="${velodyne_frame}"/>
+    <origin xyz="${vel_xyz}" rpy="${vel_rpy}"/>
+  </joint>
+
+</robot>

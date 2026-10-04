@@ -1,0 +1,160 @@
+# =====================================================================
+#  !!! BU DOSYA YUKLENMIYOR - OLU CONFIG !!!
+#
+#  localization.launch.py:209-210 ndt_scan_matcher'a SADECE sunlari verir:
+#     1) /opt/ros/humble/share/autoware_ndt_scan_matcher/config/
+#        ndt_scan_matcher.param.yaml   (apt 1.9.0 varsayilani)
+#     2) config/localization/ndt_scan_matcher_tuning.param.yaml
+#
+#  Buradaki degerler (max_iterations: 50, resolution: 1.0,
+#  converged_param_type: 0 ...) calisan node'a ULASMIYOR. Gercekte
+#  kullanilan degerler icin _tuning dosyasina bakin ve ayari ORADA yapin.
+#
+#  Dosya sadece referans/gecmis olarak duruyor; install/ altinda buna
+#  bir symlink oldugu icin silinmedi.
+# =====================================================================
+
+/**:
+  ros__parameters:
+    frame:
+      # Vehicle reference frame
+      base_frame: "base_link"
+
+      # NDT reference frame
+      # Ham NDT TF'i EKF'nin map->base_link TF'i ve statik lidar TF'i ile
+      # cakismasin. Pose mesajinin kendisi yine base_link pozunu temsil eder.
+      ndt_base_frame: "ndt_base_link"
+
+      # Map frame
+      map_frame: "map"
+
+
+    sensor_points:
+      # Tolerance of timestamp difference between current time and sensor pointcloud. [sec]
+      timeout_sec: 1.0
+
+      # Required distance of input sensor points. [m]
+      # If the max distance of input sensor points is lower than this value, the scan matching will not be performed.
+      required_distance: 10.0
+
+      # 10 Hz Velodyne'ye yetismek icin MultiGrid NDT girisini ~100 ms
+      # altina indir. 0.2 m bu Jetson'da ~178 ms / ~5 Hz olculdu.
+      voxel_leaf_size: 0.3
+
+
+    ndt:
+      # The maximum difference between two consecutive
+      # transformations in order to consider convergence
+      trans_epsilon: 0.01
+
+      # The newton line search maximum step length
+      step_size: 0.1
+
+      # The ND voxel grid resolution
+      resolution: 1.0
+
+      # The number of iterations required to calculate alignment
+      max_iterations: 50
+
+      # Jetson'daki 12 cekirdegin dordunu EKF, DDS ve RViz'e birak.
+      # Tum cekirdekleri NDT'ye vermek toplam sistem gecikmesini arttirir.
+      num_threads: 8
+
+      regularization:
+        enable: false
+
+        # Regularization scale factor
+        scale_factor: 0.01
+
+
+    initial_pose_estimation:
+      # The number of particles to estimate initial pose
+      # RViz pozu yerel aramayi zaten sinirlar. 0.3 m filtre ile sekiz aday,
+      # ilk hizalamayi hizli tutarken tek bir kotu NDT sonucuna baglanmaz.
+      particles_num: 8
+
+      # The number of initial random trials in the TPE (Tree-Structured Parzen Estimator).
+      # This value should be equal to or less than 'initial_estimate_particles_num' and more than 0.
+      # If it is equal to 'initial_estimate_particles_num', the search will be the same as a full random search.
+      n_startup_trials: 4
+
+      # RViz'de verilen base_link yonunun cevresinde ±15 derece ara.
+      yaw_search_range_rad: 0.261799
+
+
+    validation:
+      # Tolerance of timestamp difference between initial_pose and sensor pointcloud. [sec]
+      initial_pose_timeout_sec: 4.0
+
+      # Tolerance of distance difference between two initial poses used for linear interpolation. [m]
+      initial_pose_distance_tolerance_m: 1.0
+
+      # Tolerance of distance difference from initial pose to result pose. [m]
+      initial_to_result_distance_tolerance_m: 30.0
+
+      # The execution time which means probably NDT cannot matches scans properly. [ms]
+      critical_upper_bound_exe_time_ms: 100.0
+
+      # Tolerance for the number of times rejected estimation results consecutively
+      skipping_publish_num: 5
+
+
+    score_estimation:
+      # Converged param type
+      # 0=TRANSFORM_PROBABILITY, 1=NEAREST_VOXEL_TRANSFORMATION_LIKELIHOOD
+      converged_param_type: 0
+
+      # If converged_param_type is 0
+      # Threshold for deciding whether to trust the estimation result
+      converged_param_transform_probability: 0.6
+
+      # If converged_param_type is 1
+      # Threshold for deciding whether to trust the estimation result
+      converged_param_nearest_voxel_transformation_likelihood: 2.3
+
+      # Scan matching score based on no ground LiDAR scan
+      no_ground_points:
+        enable: false
+
+        # If lidar_point.z - base_link.z <= this threshold , the point will be removed
+        z_margin_for_ground_removal: 0.8
+
+
+    covariance:
+      # The covariance of output pose
+      # Note that this covariance matrix is empirically derived
+      output_pose_covariance:
+        [
+          0.0225, 0.0,   0.0,   0.0,      0.0,      0.0,
+          0.0,   0.0225, 0.0,   0.0,      0.0,      0.0,
+          0.0,   0.0,   0.0225, 0.0,      0.0,      0.0,
+          0.0,   0.0,   0.0,   0.000625, 0.0,      0.0,
+          0.0,   0.0,   0.0,   0.0,      0.000625, 0.0,
+          # yaw variance: (3 deg)^2. NDT EKF'yi duzeltecek kadar guclu,
+          # tek bir scan sonucu saga-sola sert cekecek kadar agresif degil.
+          0.0,   0.0,   0.0,   0.0,      0.0,      0.002742,
+        ]
+
+      # 2D Real-time covariance estimation with multiple searches (output_pose_covariance is the minimum value)
+      covariance_estimation:
+        enable: false
+
+        # Offset arrangement in covariance estimation [m]
+        # initial_pose_offset_model_x & initial_pose_offset_model_y must have the same number of elements.
+        initial_pose_offset_model_x: [0.0, 0.0, 0.5, -0.5, 1.0, -1.0]
+        initial_pose_offset_model_y: [0.5, -0.5, 0.0, 0.0, 0.0, 0.0]
+
+
+    dynamic_map_loading:
+      # Dynamic map loading distance
+      enable_map_update: true              
+      map_update_interval: 1.0 
+      # 150 m yerel haritanin sinirina gelmeden yeni parcayi hazirla.
+      update_distance: 50.0
+
+      # Dynamic map loading loading radius
+      # Tum GlobalMap'i (1500 m) NDT hedefi yapmak yerine yeterli yerel cevreyi yukle.
+      map_radius: 150.0
+
+      # Radius of input LiDAR range (used for diagnostics of dynamic map loading)
+      lidar_radius: 100.0

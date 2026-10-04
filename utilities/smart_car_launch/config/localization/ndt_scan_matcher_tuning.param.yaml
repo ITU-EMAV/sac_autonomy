@@ -1,0 +1,147 @@
+# NDT scan matcher — Jetson AGX Orin + Velodyne VLP-16 ayarlari
+#
+# Apt config'inin (autoware_ndt_scan_matcher 1.9.0) uzerine yuklenir;
+# sadece bu kurulum icin farklilasan degerleri icerir.
+#
+# Donanim: AGX Orin, 12x Cortex-A78AE @ 2.2 GHz, 61 GB RAM, MAXN
+# Olculen: ~140 ms/tarama  (resolution 2.0 + 0.5 m voxel girdi, 8 thread)
+#          -> ~7 Hz kapasite, 10 Hz LiDAR girdisine yakin
+/**:
+  ros__parameters:
+    sensor_points:
+      # 0.25 -> 1.0 (Autoware varsayilani).
+      # 0.25 ile Jetson'da bag + RViz + NDT yukunde bulut yasi siklikla
+      # 250 ms'yi asiyor, NDT taramalari atliyor ve EKF uzun sure sadece
+      # encoder ile gidip geride kaliyordu. Gecikmis taramayi EKF zaten
+      # extend_state_step ile telafi ediyor.
+      timeout_sec: 1.0
+
+    ndt:
+      # 12 cekirdegin 8'i NDT'ye. Kalan 4 cekirdek pointcloud_filter,
+      # ekf_localizer (50 Hz), map_loader ve rviz icin birakiliyor.
+      num_threads: 8
+
+      # HEDEF (harita) voxel cozunurlugu.
+      #
+      # 2.0 -> 2.5.
+      #
+      # NOT: kaynak seyreltmesi (filter_voxel_leaf_size) bir ara buna
+      # ESITLENDI (2.5) ama olculerek geri alindi. Gerekce
+      # localization.launch.py'deki filter_voxel_leaf_size aciklamasinda:
+      # esitlik bulutu saflastiriyor fakat x/y/yaw'a bilgi katan nokta
+      # sayisini 3.287'den 821'e (4x) dusuruyordu. Kaynak leaf 0.5'te.
+      #
+      # Neden 2.5 (yukari):
+      #   + Komsu voxel arama yaricapi = resolution. 2.0 -> 2.5 yakalama
+      #     mesafesini %25 buyutur; "bazen bulamiyor"a dogrudan iyi gelir.
+      #   + Gauss'lar genisler -> ayni hizalama daha YUKSEK NVTL uretir.
+      #   + Hedef grid kuculur -> exe_time duser.
+      #   - Minimum kunterlesir, poz hassasiyeti bir miktar azalir.
+      #
+      # Harita kapsamasi (GlobalMap.pcd, 10.932.779 nokta, olculdu):
+      #   res 2.0 -> 123.041 voxel, noktalarin %99.2'si gecerli voxelde
+      #   res 3.0 ->  52.925 voxel, %99.7
+      # 2.5 bu ikisinin arasinda; harita fazlasiyla yogun, sorun yok.
+      #
+      # !!! ESIK YENIDEN OLCULMELI !!!
+      # Asagidaki converged_param_nearest_voxel_transformation_likelihood
+      # 2.3 degeri resolution 2.0 icin olculdu ve NVTL'nin OLCEGI
+      # cozunurluge baglidir. 2.5'te ayni kalitedeki hizalama daha yuksek
+      # NVTL uretir, yani 2.3 esigi GEVSER (yanlis red azalir - guvenli
+      # yon) ama iyi/kotu ayrimi zayiflar. Bu dosyada ayni hata iki kez
+      # yasandi; bu kez olcerek kapatin:
+      #   /localization/ndt_localizer/debug/nearest_voxel_transformation_likelihood
+      resolution: 2.5
+
+      # 30 -> 40. Bkz. asagidaki step budget notu.
+      max_iterations: 40
+
+      # More-Thuente line search'un iterasyon basina MAKSIMUM adimi.
+      # Toplam kat edilebilen yol = max_iterations * step_size.
+      #   eski: 30 * 0.1 = 3.0 m  -> ndt_failure_diag bag'inde t=395'ten
+      #   sonra distance_initial_to_result tam bu tavanda (medyan 2.50 m,
+      #   maks 2.88 m) sikisti. NDT 30 iterasyonu sadece baslangic
+      #   tahminine surunerek harcadi, trans_epsilon'a hic ulasamadi,
+      #   is_ok_iteration_num false kaldi ve poz YAYINLANMADI. Yayin
+      #   durunca EKF olu hesaba dustu, tahmin daha da kaydi -> kilit.
+      #   yeni: 40 * 0.3 = 12 m -> 2.5 m'lik offset ~9 iterasyonda
+      #   kapanir, kalan ~30 iterasyon rafinasyona kalir.
+      # Ust sinir oldugu icin hata kucukken line search zaten kucuk adim
+      # secer; normal surusteki davranis degismez.
+      step_size: 0.3
+
+      trans_epsilon: 0.03
+
+    score_estimation:
+      converged_param_type: 1
+
+      # 1.2 -> 2.3 (Autoware varsayilanina donus).
+      #
+      # Eski 1.2'nin gerekcesi ("VLP-16'da surus skoru ~1.2") ndt_failure_diag
+      # bag'inde OLCULEREK curutuldu. resolution 2.0 ile gercek degerler:
+      #   saglikli surus (t<370, n=2759): min 2.76  p1 2.99  medyan 3.11
+      #   bozuk bolge   (t>395, n= 573): min 1.49  medyan 2.15
+      # 1.2 muhtemelen resolution 1.0 yurulukteyken olculmustu; bu dosyanin
+      # kendi yorumu da 1.0'in skoru DUSURDUGUNU soyluyor. Cozunurluk
+      # duzeltildi, esik guncellenmeden kaldi -> bayat ayar.
+      #
+      # Esik karsilastirmasi (ayni bag):
+      #   1.2 -> saglikli red %0.0 | bozuk poz GECEN %100
+      #   2.3 -> saglikli red %0.0 | bozuk poz GECEN  %32
+      #   2.5 -> saglikli red %0.0 | bozuk poz GECEN  %22
+      # 2.3 saglikli hicbir pozu kaybetmeden coplerin ucte ikisini eliyor ve
+      # saglikli minimuma (2.76) 0.46 pay birakiyor. 2.5 de guvenli ama pay 0.26.
+      converged_param_nearest_voxel_transformation_likelihood: 2.3
+
+
+    initial_pose_estimation:
+      # ndt_align'in deneyecegi aday poz sayisi (TPE ile orneklenir).
+      #
+      # Arama BOLGESI bu sayidan gelmiyor: RViz "2D Pose Estimate" mesajinin
+      # KOVARYANSINDAN geliyor. sac_pose_initializer o mesaji kovaryansiyla
+      # birlikte degistirmeden initialize servisine geciriyor
+      # (sac_pose_initializer_node.cpp:89-91), NDT de TPE'nin ornekleme
+      # sigmalarini o matristen kuruyor.
+      #
+      # rviz/localization.rviz ile birlikte ayarlandi:
+      #     Covariance x/y: 0.09   -> sigma 0.30 m   (eski 0.25 -> 0.50 m)
+      #     Covariance yaw: 0.0195 -> sigma 8 derece (eski 0.0685 -> 15 derece)
+      #
+      # 200/100 -> 20/10. Elle verilen poz guvenilir kabul edildigi icin
+      # burada yapilan is ARAMA degil RAFINASYON. Daralan bolgede 20 aday
+      # fazlasiyla yeterli.
+      #
+      # 200 aday, align'i ~15 s suren bir isleme cevirmisti; o sure boyunca
+      # pose_initializer hem NDT'yi hem EKF'yi bilerek deaktif tutuyor ve
+      # log "The node is not activated. Provide initial pose to
+      # pose_initializer" ile doluyor. 20 aday ile olculen align suresi
+      # 1.66 s ve 1.87 s.
+      #
+      # Not: aday sayisini dusurmek ndt_recovery_watchdog'un OTOMATIK
+      # kurtarmasini da etkiler. O yol RViz'i kullanmaz, kendi kovaryansini
+      # uretir (ndt_recovery_watchdog_node.cpp:176-181, search_stddev_m 5.0).
+      # 5 m'lik bolgeyi 20 adayla taramak seyrek kalir; kurtarma basarisiz
+      # olursa ndt_watchdog_search_m'yi 2-3 m'ye cekmek gerekebilir.
+      #
+      # Kural: 0 < n_startup_trials <= particles_num. Ilk n_startup_trials
+      # deneme rastgele orneklenir, sonrakiler TPE modelinden gelir.
+      particles_num: 20
+      n_startup_trials: 10
+
+    dynamic_map_loading:
+      # Autoware upstream varsayilani; yerel haritayi sinira gelmeden yeniler.
+      update_distance: 20.0
+
+      # lidar_radius, map_update_module.cpp:96'daki menzil kontrolunde
+      # kullanilir:   distance + lidar_radius > map_radius  ->  UYARI
+      # (distance = son harita guncelleme noktasindan kat edilen yol,
+      #  update_distance'a kadar cikar).
+      # filter_max_range 80 m'ye cekildi; apt varsayilani 100 bununla
+      # tutarsiz kaldigi icin "Lidar has gone out of the map range"
+      # uyarisi surekli tetikleniyordu.
+      lidar_radius: 80.0
+
+      # Gerekli: map_radius > lidar_radius + update_distance = 80 + 20 = 100.
+      # 120, 20 m pay birakir. (apt varsayilani 150; 120 daha kucuk yerel
+      # harita = daha kucuk NDT hedef gridi = daha dusuk exe_time.)
+      map_radius: 120.0

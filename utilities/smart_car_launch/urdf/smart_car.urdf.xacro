@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<robot name="smart_car" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:arg name="imu_frame" default="zed_imu_link"/>
+  <xacro:arg name="camera_frame" default="zed_camera_center"/>
+  <xacro:arg name="lidar_frame" default="velodyne"/>
+  <!-- ZED kamera ve IMU: base_link'e gore 1.2 m onde, 1.75 m yukarida. -->
+  <xacro:arg name="imu_xyz" default="1.2 0 1.75"/>
+  <xacro:arg name="camera_xyz" default="1.2 0 1.75"/>
+  <!-- Velodyne: base_link'e gore 40 cm onde, 1.8 m yukarida. -->
+  <xacro:arg name="lidar_xyz" default="0.4 0 1.8"/>
+  <!-- Velodyne x axis points forward and is aligned with base_link. -->
+  <xacro:arg name="lidar_rpy" default="0 0 0"/>
+  <!-- GNSS: base_link'in 1.75 m uzerinde. -->
+  <xacro:arg name="gps_xyz" default="0 0 1.75"/>
+
+  <link name="base_link"/>
+  <link name="$(arg imu_frame)"/>
+  <joint name="base_to_zed_imu" type="fixed">
+    <parent link="base_link"/>
+    <child link="$(arg imu_frame)"/>
+    <origin xyz="$(arg imu_xyz)" rpy="0 0 0"/>
+  </joint>
+
+  <link name="$(arg camera_frame)"/>
+  <joint name="base_to_zed_camera" type="fixed">
+    <parent link="base_link"/>
+    <child link="$(arg camera_frame)"/>
+    <origin xyz="$(arg camera_xyz)" rpy="0 0 0"/>
+  </joint>
+
+  <link name="$(arg lidar_frame)"/>
+  <joint name="base_to_velodyne" type="fixed">
+    <parent link="base_link"/>
+    <child link="$(arg lidar_frame)"/>
+    <origin xyz="$(arg lidar_xyz)" rpy="$(arg lidar_rpy)"/>
+  </joint>
+
+  <link name="gps"/>
+  <joint name="base_to_gps" type="fixed">
+    <parent link="base_link"/>
+    <child link="gps"/>
+    <origin xyz="$(arg gps_xyz)" rpy="0 0 0"/>
+  </joint>
+</robot>

@@ -1,0 +1,12 @@
+# ZED IMU
+
+accelerometer_noise: 0.031 # m/s^2/Hz^0.5
+accelerometer_bias_stability : 1.0 # m/s^2 
+
+#Gyroscope
+gyroscope_noise: 0.16 # deg/s/Hz^0.5
+gyroscope_bias_stability: 1.00 # deg/s 
+
+rostopic: '/zed/zed_node/imu/data' 
+update_rate: 100.0
+

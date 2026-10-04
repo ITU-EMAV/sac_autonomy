@@ -1,0 +1,28 @@
+/**:
+  ros__parameters:
+    min_range: 0.3
+    max_range: 32.0
+    frame_id: "velodyne"
+    input_topic: "/velodyne_points"
+    front_range: 30.0
+    rear_range: 10.0
+    lateral_range: 10.0
+
+    resolution: 1.0
+    num_iter: 3
+    num_lpr: 3
+    num_min_pts: 3
+    th_seeds: 0.5
+    th_dist: 0.15
+    th_outlier: 1.0
+    th_normal: 0.940
+    th_weight: 200.0
+    th_lcc_normal: 0.05
+    th_lcc_planar: 0.15
+    th_obstacle: 0.3
+    # Drop every point above the sensor origin on input. The URDF puts the Velodyne
+    # 1.8 m above the ground and it is the highest point on the vehicle, so anything
+    # with z > 0 passes over the car and must not become an obstacle.
+    max_point_z: 0.0
+    refine_mode: true
+    visualization: true

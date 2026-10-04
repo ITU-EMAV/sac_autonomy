@@ -2,22 +2,22 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>sac_bringup</name>
-  <version>0.1.0</version>
-  <description>Launch files that start the SAC car's autonomy packages together.</description>
-  <maintainer email="yunus.akdal@gmail.com">Yunus Ahmet AKDAL</maintainer>
-  <license>MIT</license>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="iamburakglr@gmail.com">bmg8amr2</maintainer>
+  <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
-
+  <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
-  <exec_depend>sac_planning</exec_depend>
-  <exec_depend>sac_control</exec_depend>
-  <exec_depend>sac_localization</exec_depend>
-  <exec_depend>sac_localization_adapters</exec_depend>
-  <exec_depend>sac_perception</exec_depend>
-  <exec_depend>sac_local_planner</exec_depend>
+  <exec_depend>velodyne</exec_depend>
+  <exec_depend>zed_wrapper</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
 
   <export>
-    <build_type>ament_cmake</build_type>
+    <build_type>ament_python</build_type>
   </export>
 </package>

@@ -1,0 +1,26 @@
+{
+    "36288423": {
+        "input": {
+            "fusion": {
+                "type": "INTRA_PROCESS"
+            },
+            "zed": {
+                "configuration": "34653372",
+                "type": "USB_SERIAL"
+            }
+        },
+        "world": {
+            "rotation": [
+                0.0,
+                0.0,
+                0.0
+            ],
+            "translation": [
+                0.0,
+                -1.0,
+                0.4
+            ]
+        }
+    }
+ 
+}

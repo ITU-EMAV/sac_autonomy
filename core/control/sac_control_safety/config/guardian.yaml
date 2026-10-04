@@ -1,0 +1,38 @@
+command_guardian:
+  ros__parameters:
+    controller_input_topic: /control/controller_command
+    actuator_output_topic: /vehicle/actuator_command
+    localization_topic: /localization/online/pose
+    vehicle_feedback_topic: /vehicle/speed
+    trajectory_topic: /trajectory_planner/trajectory
+    collision_perception_topic: /all_bottom_clusters
+    camera_behavior_topic: /yolo_detections
+    expected_source_id: planner_controller
+
+    # Validate and publish diagnostic safe commands; physical output remains locked below.
+    enabled: true
+
+    # Fail-closed commissioning switches. Both remain false in vehicle-mode defaults.
+    allow_vehicle_output: false
+    require_collision_perception: true
+    require_camera_behavior: true
+    require_localization: true
+
+    vehicle_feedback_max_age_ms: 150.0
+    localization_max_age_ms: 100.0
+    trajectory_max_age_ms: 250.0
+    collision_perception_max_age_ms: 200.0
+    camera_behavior_max_age_ms: 750.0
+    command_max_age_ms: 100.0
+    future_tolerance_ms: 5.0
+
+    max_steering_angle_rad: 0.40143
+    max_steering_rate_radps: 0.35
+    max_throttle_normalized: 0.30
+    max_drive_torque_nm: 0.0
+    max_brake_normalized: 1.0
+    max_target_speed_mps: 1.0
+    max_acceleration_mps2: 0.5
+    max_deceleration_mps2: 1.5
+    safe_stop_brake_normalized: 1.0
+    output_period_ms: 20

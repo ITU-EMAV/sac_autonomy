@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Device-specific and large model artifacts stay local. See models/README.md.
+models/*
+!models/README.md
+
+# Runtime diagnostics and generated images stay local.
+logs/*
+!logs/.gitkeep
+
+# Docker builds torchvision from its pinned upstream tag.
+third_party/vision/

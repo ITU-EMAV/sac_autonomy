@@ -1,0 +1,60 @@
+/**:
+  ros__parameters:
+    # Primary localization mode: 'gps', 'lidar', or 'fusion'
+    # - gps: Uses only GPS/GNSS for positioning
+    # - lidar: Uses LiDAR SLAM pose estimates
+    # - fusion: Fuses data from both GPS and LiDAR
+    localization_mode: 'gps'
+
+    # GPS/GNSS Configuration
+    gps:
+      # Whether to use GPS data
+      enabled: true
+      # Topic name for GPS data
+      topic: '/fix'
+      # Frame ID for GPS
+      frame_id: 'gps'
+      # GPS position covariance (diagonal elements)
+      position_covariance: [1.0, 1.0, 1.0]
+      # Magnetic declination in degrees (adjust for your location)
+      magnetic_declination_deg: 6.0
+      # Magnetometer noise in degrees
+      magnetic_noise_deg: 3.0
+
+    # LiDAR SLAM Configuration
+    lidar:
+      # Whether to use LiDAR-based pose estimates
+      enabled: false
+      # Topic for LiDAR SLAM pose output
+      pose_topic: '/lidarslam/map_to_odom'
+      # Message type: 'pose', 'pose_with_covariance', or 'odometry'
+      pose_msg_type: 'pose_with_covariance'
+      # Weight for fusion (0.0-1.0, higher values give more weight to LiDAR)
+      fusion_weight: 0.7
+
+    # IMU Configuration
+    imu:
+      # Topic name for IMU data
+      topic: '/imu'
+      # Frame ID for IMU
+      frame_id: 'imu'
+      # Use separate calibration file for IMU parameters
+      calibration_file: 'imu.yaml'
+
+    # Encoder Configuration
+    encoder:
+      # Whether to use wheel encoder data
+      enabled: true
+      # Topic name for wheel encoder data
+      topic: '/encoder'
+
+    # Output Configuration
+    output:
+      # Publish frequency for odometry and transforms (Hz)
+      publish_frequency: 10
+      # Whether to publish transforms
+      publish_tf: true
+      # Parent frame for the transform
+      parent_frame: 'odom'
+      # Child frame for the transform
+      child_frame: 'base_link'

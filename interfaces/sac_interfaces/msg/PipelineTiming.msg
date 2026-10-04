@@ -1,0 +1,14 @@
+builtin_interfaces/Time stamp
+string component
+uint64 sequence
+float64 release_jitter_ms
+float64 execution_time_ms
+float64 source_age_ms
+float64 queue_delay_ms
+float64 snapshot_lock_ms
+float64 path_projection_ms
+float64 control_compute_ms
+float64 publish_ms
+uint64 received_count
+uint64 processed_count
+uint64 dropped_count

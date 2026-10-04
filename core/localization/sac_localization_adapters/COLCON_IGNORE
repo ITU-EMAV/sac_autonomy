@@ -1,0 +1,2 @@
+This package targets the previous sac_localization plugin API.
+The migrated vehicle localizer does not export that API.

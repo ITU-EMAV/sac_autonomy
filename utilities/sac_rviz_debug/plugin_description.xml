@@ -1,0 +1,7 @@
+<library path="sac_rviz_debug_panel">
+  <class name="sac_rviz_debug/PerceptionControlPanel"
+         type="sac_rviz_debug::PerceptionControlPanel"
+         base_class_type="rviz_common::Panel">
+    <description>Sensor rates and perception-to-control command diagnostics.</description>
+  </class>
+</library>

@@ -1,0 +1,40 @@
+/**:
+  ros__parameters:
+    min_range: 0.3
+    max_range: 32.0
+    frame_id: "velodyne"
+    input_topic: "/nonground"
+    front_range: 30.0
+    rear_range: 10.0
+    lateral_range: 10.0
+
+    min_vert_angle: -15.0 
+    max_vert_angle: 15.0
+    vert_scan: 16
+    horz_scan: 1024
+
+    downsample: 1 # It means the downsample rate of the point cloud, 1 means no downsample
+    car_top_margin: 0.0
+    car_lat_margin: 0.4
+    car_front_margin: 0.5
+
+    th_horz_merg: 0.9 # It means the horizontal distance between two clusters to merge them
+    th_vert_merg: 1.0 # It means the vertical distance between two clusters to merge them
+    vert_scan_size: 15
+    horz_scan_size: 15
+    horz_skip_size: 15
+    horz_extension_size: 150
+    min_cluster_size: 3
+    max_cluster_size: 1000
+    debug: false
+    can_see_back: true
+    min_cluster_height: 0.2 # It means the minimum height of the cluster to be considered as a valid object
+    # Clearance plane, in the Velodyne frame. The URDF puts the Velodyne 1.8 m above
+    # base_link (ground level) and it is the highest point on the vehicle, so every
+    # point with z > 0 passes over the car. The ground filter already crops the input
+    # cloud at the same height; this repeats it in case the node runs on an uncropped
+    # cloud, and keeps overhanging branches from merging with a trunk.
+    max_point_z: 0.0
+    # Do not publish clusters whose bottom is above the same plane: the vehicle
+    # drives under them. Keep this equal to max_point_z.
+    max_bottom_z: 0.0

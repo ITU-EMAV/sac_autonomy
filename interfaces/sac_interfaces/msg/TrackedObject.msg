@@ -1,0 +1,10 @@
+uint64 track_id
+uint8 kind
+float32 confidence
+bool position_valid
+geometry_msgs/Point position
+bool velocity_valid
+geometry_msgs/Vector3 velocity
+float32 age_sec
+builtin_interfaces/Time last_seen
+string frame_id

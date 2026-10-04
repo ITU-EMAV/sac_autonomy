@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    resolution: 0.05
+    grid_width: 30.0
+    grid_height: 30.0
+    expand_occupied_cells: true
+    pointcloud_topic: "/velodyne_points"
+    occupancy_topic: "/occupancy_grid"
+    min_z: 0.1

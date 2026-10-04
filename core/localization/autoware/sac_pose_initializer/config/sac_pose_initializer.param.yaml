@@ -1,0 +1,29 @@
+/**:
+  ros__parameters:
+    # z kaynagi: "map" harita bulutundan zemin yuksekligini okur (onerilen),
+    # "constant" asagidaki map_z sabitini kullanir.
+    height_source: "map"
+    map_topic: "/map/pointcloud_map"
+    ground_search_radius: 5.0
+    ground_grid_size: 1.0
+    z_offset: 0.0
+
+    # Sadece YEDEK: harita gelmediyse veya o noktada harita noktasi yoksa.
+    # Kullanildiginda WARN basilir.
+    map_z: 0.0
+
+    # Frame'ler
+    map_frame: "map"
+
+    # Giris topic'i (RViz "2D Pose Estimate" buraya yayin yapar)
+    initial_pose_topic: "initialpose"
+
+    # Lokalizasyon yigininin initialize servisi
+    initialize_service: "/localization/initialize"
+
+    # component_interface_specs Initialize.Request.method
+    #   1 = verilen poz ile baslat
+    initialize_method: 1
+
+    # TF lookup timeout [s]
+    tf_timeout: 0.5

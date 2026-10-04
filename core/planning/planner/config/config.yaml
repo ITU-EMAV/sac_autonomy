@@ -1,0 +1,273 @@
+---
+common_parameters:
+  # The launch file obtains this path from smart_car_launch/config/maps/map_config.yaml.
+  osm_path: &osm_path ""
+  _x: &_x 40.64479964953
+  _y: &_y 28.18269962266
+  pose_topic: &pose_topic "/localization/ekf_localizer/pose_with_cov"
+  telemetry_topic: &telemetry_topic "/vehicle/telemetry"
+  yolo_topic: &yolo_topic "/yolo_detections"
+  no_entry_topic: &no_entry_topic "/no_entry_ids"
+  switch_to_centerline_topic: &switch_to_centerline_topic "/switch_controller"
+  speed_limit_topic: &speed_limit_topic "/speed_limit"
+  cluster_topic: &cluster_topic "/all_bottom_clusters"
+
+# The launch file reads this flag. When false, the reactive component is not
+# loaded and has no runtime impact on the Lanelet/localization-based planner.
+planner_launch:
+  ros__parameters:
+    reactive_mode: false
+    launch_rviz: false
+    # Replay/diagnostic mode: retain the last received plan and speed limits
+    # when their timestamps age. Missing first inputs still block control.
+    enforce_freshness: false
+
+reactive_road_planner_exe:
+  ros__parameters:
+    drivable_mask_topic: "/perception/road/drivable_mask"
+    lane_mask_topic: "/perception/road/lane_mask"
+    trajectory_topic: "/reactive_planner/trajectory"
+    output_frame: "base_link"
+    row_step: 12
+    mask_threshold: 127
+    min_segment_width_px: 20
+    min_forward_m: 0.5
+    max_forward_m: 12.0
+    smoothing_alpha: 0.35
+    temporal_alpha: 0.25
+    max_lateral_change_m: 0.5
+    lane_center_weight: 0.65
+    # Normalized image coordinates: top-left, top-right, bottom-right, bottom-left.
+    # Update these four points after calibrating the camera on the vehicle.
+    source_trapezoid: [0.35, 0.55, 0.65, 0.55, 0.95, 0.98, 0.05, 0.98]
+    # Corresponding base_link points: x forward, y left [meters].
+    ground_trapezoid: [12.0, 3.0, 12.0, -3.0, 0.5, -2.0, 0.5, 2.0]
+
+global_planner_exe:
+  ros__parameters:
+    origin_pose:
+      _x: *_x
+      _y: *_y
+    osm_path: *osm_path
+    rviz_goal_topic: "/move_base_simple/goal"
+    station_name: "durak"
+    park_name: "park"
+    rviz_pose: false # second day we need to set goal pose to parking entry because we are required to detect traffic signs and to plan the path to parking entry
+    goal_pose_topic: "/global_planner/goal"
+    first_goal_id: 67
+    # Campus haritasında 564'ün ardından gelen 1499'a kadar rotayı uzat.
+    # 0 verilirse eski sabit istasyon koordinatı kullanılır.
+    station_goal_lanelet_id: 1499
+    parking_lot_entry_id: 2450
+    is_first_day: true
+    stopping_at_station_tolerance: 1.0
+    stopping_at_park_tolerance: 1.3
+    pose_topic: *pose_topic
+    cluster_topic: *cluster_topic
+    yolo_topic: *yolo_topic
+    no_entry_topic: *no_entry_topic
+    switch_to_centerline_topic: *switch_to_centerline_topic
+    speed_limit_topic: *speed_limit_topic
+    station_marker_topic: "/station_marker"
+
+mission_planner_exe:
+  ros__parameters:
+    enforce_freshness: false
+    enable_stop_sign: false
+    origin_pose:
+      _x: *_x
+      _y: *_y
+    osm_path: *osm_path
+    pose_topic: *pose_topic
+    path_topic: "/mission_planner/path"
+    goal_pose_topic: "/global_planner/goal"
+    stop_topic: "/mission_planner/stop_distance"
+    telemetry_topic: *telemetry_topic
+    yolo_topic: *yolo_topic
+    station_name: "durak"
+    park_name: "park"
+    switch_to_centerline_topic: *switch_to_centerline_topic
+    no_entry_topic: *no_entry_topic
+    cluster_topic: *cluster_topic
+    occupancy_grid_topic: "/occupancy_grid"
+
+occupancy_grid_exe:
+  ros__parameters:
+    grid_resolution: 0.3
+    grid_size: 100
+    origin_pose:
+      _x: *_x
+      _y: *_y
+    osm_path: *osm_path
+    pose_topic: *pose_topic
+    occupancy_grid_topic: "/occupancy_grid"
+    cluster_topic: *cluster_topic
+    path_topic: "/mission_planner/path"
+    vehicle_width: 1.2
+    vehicle_length: 1.2
+    safety_margin: 1.0
+    debug_mode: false
+
+trajectory_planner_exe:
+  ros__parameters:
+    origin_pose:
+      _x: *_x
+      _y: *_y
+    osm_path: *osm_path
+    pose_topic: *pose_topic
+    # Follow the Lanelet centerline until an in-lane obstacle requests avoidance.
+    follow_centerline: true
+
+    # Which search runs once an obstacle takes the vehicle off the centerline:
+    #   "astar"   - grid search, can route around anything the grid allows
+    #   "lattice" - fan of laterally offset spline candidates, cheaper and
+    #               smoother, but can only shift sideways from the centerline
+    planner_type: "lattice"
+    # Length of one A* expansion, in grid cells.
+    curvature_contributing_factor: 3.0
+    # Cost per grid cell of lateral distance from the lane centerline. The distance
+    # field is precomputed once per plan, so raising this is cheap.
+    centerline_contributing_factor: 1.0
+    # Cost of a cell whose occupancy value is unknown (negative).
+    unknown_cell_cost: 50.0
+    # Cost per unit of occupancy value: value 0 is free, value 50 costs 25 per cell
+    # of travel. Main knob for how strongly the planner sticks to free lane surface.
+    occupancy_cost_factor: 0.5
+    # Only cells at or above this value block the planner; everything else is
+    # traversable, just more expensive.
+    lethal_cost_threshold: 100
+    # Cost per degree of heading change on a step.
+    turn_penalty: 0.5
+    # Wall-clock budget per A* search, in seconds (spent once per clearance retry).
+    planning_time_budget: 0.05
+    clearance: 0
+    occupancy_grid_topic: "/occupancy_grid"
+    path_topic: "/mission_planner/path"
+    trajectory_topic: "/trajectory_planner/trajectory"
+    switch_controller_topic: *switch_to_centerline_topic
+    # Only subscribed in lattice mode, for the speed-adaptive anchor distance.
+    odometry_topic: "/localization/ekf_localizer/odom"
+
+    # --- Lattice planner (used when planner_type is "lattice") ---
+    # Sized for the full-size vehicle: 1.7 m wheelbase, 1.2 m wide, 23 deg max
+    # steer (4.0 m minimum turning radius), 1-2 m/s, ~2 m lane width, and a
+    # 100 x 0.3 m occupancy grid that reaches 15 m ahead.
+    lattice:
+      # Forward extent of the centerline window, in meters (grid limit is 15 m).
+      planner_horizon: 15.0
+      # Centerline points kept behind the vehicle, in meters.
+      behind_distance: 3.0
+      # Route-index window around the closest point. Bounds the anchor search so
+      # a route looping back through the grid cannot supply the anchor.
+      window_behind: 10
+      window_ahead: 100
+      # Speed range used to scale the anchor distance.
+      min_speed: 1.0
+      max_speed: 2.0
+      # Anchor distance range. The lower bound bounds candidate curvature: a 3 m
+      # offset over 8 m needs ~3.6 m radius against the vehicle's 4.0 m minimum.
+      min_lookahead: 8.0
+      max_lookahead: 12.0
+      # Spline sample spacing, in meters. Keep below grid_resolution (0.3) so a
+      # collision check cannot step over an occupied cell.
+      path_resolution: 0.2
+      # Candidate lateral offsets, in meters (+ is left). The lane is ~2 m wide
+      # and obstacles are inflated by ~1.85 m, so clearing a centred obstacle
+      # needs ~2.5 m. Listed left-first within each magnitude: equal-cost
+      # candidates are broken by list order, so a symmetric obstacle is passed
+      # on the overtaking side. Swap the signs to overtake on the right.
+      candidate_offsets: [0.0, 0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0, 2.5, -2.5, 3.0, -3.0]
+      # Cost per meter of lateral offset from the centerline.
+      offset_weight: 1.0
+      # Cost, in equivalent meters of offset, of a candidate running entirely
+      # over lethal-valued surface; scales linearly with the occupancy value.
+      # 6.0 makes a fully off-lane (value 50) candidate cost as much as a 3 m offset.
+      off_lane_penalty: 6.0
+      # Publishes /trajectory_planner/lattice_candidates when something subscribes.
+      publish_debug: true
+
+controller_exe:
+  ros__parameters:
+    # Topics
+    trajectory_topic: "/trajectory_planner/trajectory"
+    pose_topic: *pose_topic  # Pose and speed (from pose deltas) both come from here.
+    cmd_vel_topic: "/cmd_vel"  # Raw Twist (linear.x=m/s, angular.z=steer rad); bypasses command_guardian. "" disables it.
+    lookahead_marker_topic: "/controller/lookahead"
+    global_frame: "map"
+    local_path_mode: false
+
+    # --- Pure pursuit ---
+    linear_velocity: 1.7        # m/s commanded speed upper limit; default for planner and online vehicle launch
+    min_linear_velocity: 1.0    # m/s lower reference for a valid reactive path
+    full_speed_path_length: 8.0 # m path length that requests maximum speed
+    wheelbase: 1.7              # m
+    k_ld: 1.2                   # s     Ld = k_ld * v
+    min_lookahead: 4.5          # m keep low to avoid constant low-speed clamping
+    max_lookahead: 6.5          # m
+    curvature_gain: 0.0         # Ld /= (1 + gain*|kappa|); 0 disables it
+    curvature_window: 3.0       # m local curvature sampling window
+    a_lat_max: 0.5              # m/s^2 lateral limit -> v <= sqrt(a_lat_max/|kappa|)
+    max_steer_deg: 23.0         # deg Ackermann steering limit
+
+    # Goal and timing
+    goal_tolerance: 0.5         # m completion threshold from remaining arc length
+    slow_down_distance: 3.0     # m deceleration distance near the goal
+    path_timeout: 50.0          # s stale-path threshold
+    pose_timeout: 0.3           # s; stop if the EKF pose stops updating
+    hazard_speed_timeout: 0.5   # s max age of every speed constraint (default 0.3 caused one-tick stops)
+    future_stamp_tolerance: 0.1 # s; tolerate small /clock scheduling skew during bag replay
+    control_period: 0.02        # s, bounded 50 Hz control-loop period
+    publish_visualization: true  # /controller/lookahead MarkerArray shown in localization.rviz
+    max_path_points: 2000
+
+road_hazard_speed_planner:
+  ros__parameters:
+    future_stamp_tolerance: 0.1
+    tracking_frame: odom
+    base_frame: base_link
+    source_timeout: 0.75
+    path_timeout: 1.0
+    max_speed_mps: 2.0
+    pothole_speed_mps: 0.3
+    bump_speed_mps: 0.5
+    deceleration_mps2: 0.5
+    # Includes front overhang, depth error and perception/control latency allowance.
+    buffer_m: 2.0
+    half_width_m: 0.8
+    rear_clearance_m: 2.0
+
+# Typed STOP and red-light lifecycle; legacy /stop remains separately latched.
+traffic_speed_planner:
+  ros__parameters:
+    max_speed_mps: 2.0
+    enable_stop_sign: false # Temporarily ignore STOP signs; red lights remain active.
+    future_stamp_tolerance: 0.1 # s; match controller's /clock scheduling tolerance
+    camera_timeout: 0.75
+    odometry_timeout: 0.25
+    confidence: 0.5
+    stop_distance_m: 10.0
+    reset_clear_seconds: 1.0
+    stop_hold_seconds: 3.0
+    stop_rearm_clear_seconds: 2.0
+    green_confirm_frames: 3
+
+behavior_manager:
+  ros__parameters:
+    max_speed_mps: 2.0
+    enable_stop_sign: false
+    future_stamp_tolerance: 0.1
+    parking_entry_id: 2450
+    parking_goal_ids: [2605, 2612, 2619, 2626, 2633, 2640, 2647, 2654]
+    parking_approach_speed_mps: 1.0
+    parking_speed_mps: 0.5
+    pedestrian_prediction_horizon: 3.0
+    object_timeout: 0.75
+    camera_timeout: 0.75
+    speed_timeout: 0.25
+    corridor_half_width: 0.85
+    crosswalk_half_width: 2.0
+    crosswalk_longitudinal_m: 3.0
+    standstill_gap_m: 2.0
+    time_headway_s: 1.5
+    follow_gain: 0.5
+    stop_distance_m: 12.0

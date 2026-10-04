@@ -1,0 +1,16 @@
+# Retain static transforms and the latest controller state even when the
+# recorder starts after their publishers. Standard ROS 2 static TF QoS.
+/tf_static:
+  history: keep_all
+  reliability: reliable
+  durability: transient_local
+/tf:
+  history: keep_last
+  depth: 100
+  reliability: best_effort
+  durability: volatile
+/control/controller_state:
+  history: keep_last
+  depth: 10
+  reliability: reliable
+  durability: transient_local

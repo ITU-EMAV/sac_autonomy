@@ -1,0 +1,14 @@
+uint8 PERSON=0
+uint8 CAR=1
+uint8 MOTORCYCLE=2
+uint8 BUS=3
+uint8 TRUCK=4
+uint8 kind
+float32 confidence
+float32[4] bbox_xyxy
+bool position_valid
+geometry_msgs/Point optical_position
+geometry_msgs/Point base_position
+bool base_position_valid
+float32 distance_m
+std_msgs/Header source_header

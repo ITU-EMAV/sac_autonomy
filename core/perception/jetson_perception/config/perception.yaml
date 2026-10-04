@@ -1,0 +1,36 @@
+yolopv2_road_node:
+  ros__parameters:
+    image_topic: /zed/zed_node/left/image_rect_color
+    weights: models/yolopv2.pt
+    yolopv2_repo: third_party/YOLOPv2
+    img_size: 640
+    device: cuda:0
+    conf_threshold: 0.30
+    iou_threshold: 0.45
+    max_fps: 0.0
+
+traffic_sign_node:
+  ros__parameters:
+    image_topic: /zed/zed_node/left/image_rect_color
+    model_path: models/traffic_sign_22cls.engine
+    object_model_path: models/yolov8n.engine
+    img_size: 640
+    object_img_size: 512
+    sign_confidence: 0.45
+    object_confidence: 0.35
+    iou: 0.45
+    object_classes: [0, 2, 3, 5, 7]
+    device: "0"
+    max_fps: 0.0
+
+# Disabled unless enable_road_hazards:=true and hazard_model is supplied.
+road_hazard_node:
+  ros__parameters:
+    depth_topic: /zed/zed_node/depth/depth_registered
+    camera_info_topic: /zed/zed_node/left/camera_info
+    confidence: 0.35
+    img_size: 640
+    max_fps: 15.0
+    max_source_age: 0.5
+    future_stamp_tolerance: 0.1
+    sync_slop: 0.04

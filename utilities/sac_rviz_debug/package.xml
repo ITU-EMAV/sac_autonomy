@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>sac_rviz_debug</name>
+  <version>0.1.0</version>
+  <description>RViz panel for perception, planning and control diagnostics.</description>
+  <maintainer email="ozkanumut57@gmail.com">umut</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rviz_common</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>sac_interfaces</depend>
+  <build_depend>qtbase5-dev</build_depend>
+  <exec_depend>qtbase5-dev</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

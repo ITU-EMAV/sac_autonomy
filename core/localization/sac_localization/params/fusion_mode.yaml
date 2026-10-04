@@ -1,0 +1,55 @@
+/**:
+  ros__parameters:
+    # Primary localization mode: 'gps', 'lidar', or 'fusion'
+    localization_mode: 'fusion'
+
+    # GPS/GNSS Configuration
+    gps:
+      enabled: true  # GPS used for fusion
+      magnetic_declination_deg: 6.0
+      magnetic_noise_deg: 3.0
+      position_weight: 0.3  # 30% weight in fusion
+      min_accuracy_threshold: 2.0  # meters
+
+    # LiDAR SLAM Configuration
+    lidar:
+      enabled: true
+      pose_topic: '/current_pose'  # Updated to correct topic
+      pose_msg_type: 'pose'        # Updated to correct message type
+      position_weight: 0.7         # 70% weight in fusion
+      orientation_weight: 0.9      # 90% weight for orientation
+      max_time_diff: 0.5           # seconds
+
+    # IMU Configuration
+    imu:
+      enabled: true
+      topic: '/zed/zed_node/imu/data'
+      prediction_rate: 100  # Hz
+      orientation_weight: 0.1  # 10% weight for orientation
+
+    # Magnetometer Configuration  
+    magnetometer:
+      enabled: true
+      topic: '/zed/zed_node/imu/mag'
+      orientation_weight: 0.0  # Only for initialization
+      
+    # Fusion Configuration
+    fusion:
+      # Position fusion
+      adaptive_weighting: true     # Adjust weights based on accuracy
+      position_smoothing: 0.8      # Temporal smoothing factor
+      
+      # Orientation fusion
+      orientation_fusion_enabled: true
+      orientation_smoothing: 0.9
+      
+      # Quality control
+      outlier_detection: true
+      max_position_jump: 5.0       # meters
+      max_orientation_jump: 30.0   # degrees
+
+    # Output Configuration
+    output:
+      publish_frequency: 50
+      publish_tf: true
+      debug_fusion: true  # Enable fusion debugging output

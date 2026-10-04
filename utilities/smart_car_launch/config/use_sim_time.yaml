@@ -1,0 +1,6 @@
+# Single source of truth for use_sim_time in every launch file.
+#   false: live sensors, nodes use wall time.
+#   true:  rosbag replay; play the bag with `ros2 bag play <bag> --clock`.
+# The use_sim_time:=... launch argument still overrides this for one run.
+# Rebuild smart_car_launch after editing (colcon build --packages-select smart_car_launch).
+use_sim_time: false

@@ -4,3 +4,20 @@ build/
 install/
 log/
 .pytest_cache/
+
+# Large local runtime assets; distribute separately from source code.
+*.pt
+*.pth
+*.onnx
+*.engine
+*.pcd
+*.db3
+*.db3-*
+*.mcap
+
+# Geographic lookup data is distributed with Drive runtime assets.
+core/localization/autoware/llh_converter/data/gsigeo2011_ver2_1.asc
+
+# Local distribution archives and downloaded OAuth credentials.
+sac_runtime_assets.tar*
+client_secret_*.json

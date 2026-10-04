@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    min_range: -4.0 # If it is negative, it means that the ego vehicle can see the points behind with given range
+    max_range: 50.0
+    crop_min_x: -10.0
+    crop_max_x: 40.0 
+    crop_min_y: -40.0
+    crop_max_y: 40.0 
+    crop_min_z: -1.5
+    crop_max_z: 2.0
+    frame_id: "velodyne"
+    input_topic: "/velodyne_points" #
+    output_topic: "/filtered_point_cloud" #
+    ## x is forward, y is left, z is up

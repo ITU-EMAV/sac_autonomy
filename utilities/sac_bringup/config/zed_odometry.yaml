@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    # Visual odometry requires depth and positional tracking to be active.
+    depth:
+      depth_mode: 'PERFORMANCE'
+    pos_tracking:
+      pos_tracking_enabled: true

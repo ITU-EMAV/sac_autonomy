@@ -1,0 +1,27 @@
+# Map paths may be relative to smart_car_launch/maps or absolute paths.
+# Keeping the selected map here gives map, localization, and planner launches
+# one shared source of truth.
+pointcloud_map_path: "campus_map/map.pcd"
+pointcloud_map_metadata_path: ""
+
+map_projector_info_path: "campus_map/map_projector_info.yaml"
+lanelet2_map_path: "campus_map/lane.osm"
+
+# Relative paths are resolved under smart_car_launch/maps in the package share.
+# Absolute paths are also accepted when an external map is required.
+#
+# Alternative LIO-SAM point cloud map:
+# pointcloud_map_path: "generated/lio_sam/GlobalMap.pcd"
+# pointcloud_map_metadata_path: ""
+#
+# External map example (the paths must exist inside the container):
+# pointcloud_map_path: "/bags/maps/map.pcd"
+# pointcloud_map_metadata_path: "/bags/maps/map_metadata.yaml"
+# map_projector_info_path: "/bags/maps/map_projector_info.yaml"
+# lanelet2_map_path: "/bags/maps/lane.osm"
+
+# pointcloud_map_path: "eef_arkasi/map.pcd"
+# Leave metadata empty for a single PCD; the map loader generates it.
+# pointcloud_map_metadata_path: "/home/emav/Downloads/maps/map_metadata.yaml"
+# map_projector_info_path: "eef_arkasi/map_projector_info.yaml"
+# lanelet2_map_path: "eef_arkasi/lane.osm"

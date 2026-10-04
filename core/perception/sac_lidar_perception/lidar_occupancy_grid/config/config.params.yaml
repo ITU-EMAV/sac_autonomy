@@ -1,0 +1,7 @@
+/**:
+  ros__parameters:
+    grid_resolution: 0.2 # The resolution of the occupancy grid in meters
+    grid_size: 400 # The size of the occupancy grid in cells (200x200)
+    MinProbability: 0.1 # The minimum probability of occupancy for a cell to be considered occupied
+    MaxProbability: 0.9 # The maximum probability of occupancy for a cell to be considered occupied
+    frame_id: "base_link"

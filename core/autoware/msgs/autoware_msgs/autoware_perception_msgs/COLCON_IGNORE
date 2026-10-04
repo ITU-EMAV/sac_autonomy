@@ -1,0 +1,3 @@
+apt surumu kullaniliyor: ros-humble-autoware-perception-msgs (1.13.0-1jammy.20260731.173704)
+Kaynak surum eski; apt surumu superset (daha fazla msg/srv iceriyor).
+Overlay apt'i golgeleyince eksik tipler "undefined symbol" hatasina yol aciyor.

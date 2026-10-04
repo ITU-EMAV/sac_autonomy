@@ -1,0 +1,8 @@
+vehicle_speed_mux:
+  ros__parameters:
+    encoder_topic: /encoder_speed
+    ekf_odom_topic: /localization/ekf_localizer/odom
+    output_topic: /vehicle/speed
+    encoder_timeout: 0.15
+    ekf_timeout: 0.15
+    allow_ekf_fallback: false

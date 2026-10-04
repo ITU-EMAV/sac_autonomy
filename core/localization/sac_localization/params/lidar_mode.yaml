@@ -1,0 +1,29 @@
+/**:
+  ros__parameters:
+    # Primary localization mode: 'gps', 'lidar', or 'fusion'
+    localization_mode: 'lidar'
+
+    # GPS/GNSS Configuration
+    # Note: GPS is used for initial position setup even in lidar mode
+    gps:
+      enabled: true  # Enable GPS for initialization
+      magnetic_declination_deg: 6.0
+      magnetic_noise_deg: 3.0
+
+    # LiDAR SLAM Configuration
+    lidar:
+      enabled: true
+      pose_topic: '/current_pose'  # Actual LiDAR SLAM pose output topic
+      pose_msg_type: 'pose'        # PoseStamped message type
+      fusion_weight: 0.9
+      # New parameters for improved LiDAR to ENU transformation
+      use_fixed_transform: false     # Whether to use a fixed transform instead of calibration
+      transform_timeout_sec: 10.0    # How long to wait for a valid transform
+      calibration_points: 5          # Number of calibration points (increased from 3)
+      min_calibration_quality: 0.6   # Minimum quality threshold for calibration
+      apply_z_correction: true       # Apply height correction to LiDAR data
+
+    # Output Configuration
+    output:
+      publish_frequency: 10
+      publish_tf: false  # Disable to avoid conflicts with LiDAR SLAM

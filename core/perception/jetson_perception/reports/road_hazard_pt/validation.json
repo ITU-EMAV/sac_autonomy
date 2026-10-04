@@ -1,0 +1,395 @@
+{
+  "model": "/smart_car_ws/src/perception/jetson_perception/models/road_hazard/road_hazard.pt",
+  "sha256": "0ba816b66b588b6e8e8223bc8d02ed3e3c3da2c21abc3542c5a79f462c105551",
+  "bag": "/smart_car_ws/new_bag/new_bag_0.db3",
+  "topics": [
+    [
+      1,
+      "/tf",
+      "tf2_msgs/msg/TFMessage"
+    ],
+    [
+      2,
+      "/tf_static",
+      "tf2_msgs/msg/TFMessage"
+    ],
+    [
+      3,
+      "/encoder_speed",
+      "std_msgs/msg/Float32"
+    ],
+    [
+      4,
+      "/navsat/fix",
+      "sensor_msgs/msg/NavSatFix"
+    ],
+    [
+      5,
+      "/navsat/velocity",
+      "std_msgs/msg/Float32"
+    ],
+    [
+      6,
+      "/zed/zed_node/imu/data",
+      "sensor_msgs/msg/Imu"
+    ],
+    [
+      7,
+      "/velodyne_points",
+      "sensor_msgs/msg/PointCloud2"
+    ],
+    [
+      8,
+      "/zed/zed_node/imu/mag",
+      "sensor_msgs/msg/MagneticField"
+    ],
+    [
+      9,
+      "/zed/zed_node/left/image_rect_color",
+      "sensor_msgs/msg/Image"
+    ],
+    [
+      10,
+      "/zed/zed_node/left/camera_info",
+      "sensor_msgs/msg/CameraInfo"
+    ],
+    [
+      11,
+      "/zed/zed_node/odom",
+      "nav_msgs/msg/Odometry"
+    ]
+  ],
+  "classes": {
+    "0": "Heavy-Vehicle",
+    "1": "Light-Vehicle",
+    "2": "Pedestrian",
+    "3": "Crack",
+    "4": "Crack-Severe",
+    "5": "Pothole",
+    "6": "Speed-Bump"
+  },
+  "hazard_class_ids": [
+    5,
+    6
+  ],
+  "sampled_frames": 120,
+  "warmup_frames": 3,
+  "latency_ms": {
+    "mean": 33.3783928832266,
+    "p50": 29.09069749966875,
+    "p95": 59.7595916490718,
+    "max": 71.51165899995249
+  },
+  "counts": {
+    "Pothole": 6,
+    "Speed-Bump": 15
+  },
+  "validation_scope": "Recorded RGB inference only; no depth/path/vehicle actuation",
+  "depth_recorded": false,
+  "detections": [
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.5509166121482849,
+      "bbox_xyxy": [
+        221.1212158203125,
+        196.16378784179688,
+        373.0869140625,
+        207.96023559570312
+      ],
+      "stamp_sec": 1788613716.6835597,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 5,
+      "class_name": "Pothole",
+      "confidence": 0.41483771800994873,
+      "bbox_xyxy": [
+        369.311279296875,
+        300.36785888671875,
+        442.6080322265625,
+        328.02313232421875
+      ],
+      "stamp_sec": 1788613742.5516346,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.6905189752578735,
+      "bbox_xyxy": [
+        205.00686645507812,
+        199.90933227539062,
+        426.2499694824219,
+        215.12753295898438
+      ],
+      "stamp_sec": 1788613785.6880705,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.38512349128723145,
+      "bbox_xyxy": [
+        176.62075805664062,
+        232.55657958984375,
+        316.4589538574219,
+        241.2728271484375
+      ],
+      "stamp_sec": 1788613794.3225346,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 5,
+      "class_name": "Pothole",
+      "confidence": 0.4079521894454956,
+      "bbox_xyxy": [
+        344.7919921875,
+        256.8533630371094,
+        391.5830078125,
+        268.6623840332031
+      ],
+      "stamp_sec": 1788613798.6561177,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.7351925373077393,
+      "bbox_xyxy": [
+        0.0,
+        255.970703125,
+        477.1071472167969,
+        352.5986328125
+      ],
+      "stamp_sec": 1788613802.9564335,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 5,
+      "class_name": "Pothole",
+      "confidence": 0.4890948235988617,
+      "bbox_xyxy": [
+        325.90350341796875,
+        231.20938110351562,
+        363.68890380859375,
+        246.41061401367188
+      ],
+      "stamp_sec": 1788613815.8904386,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.6604119539260864,
+      "bbox_xyxy": [
+        206.29544067382812,
+        198.38275146484375,
+        378.2653503417969,
+        211.96142578125
+      ],
+      "stamp_sec": 1788613824.4910016,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.8081276416778564,
+      "bbox_xyxy": [
+        12.7601318359375,
+        273.73486328125,
+        496.41632080078125,
+        360.0
+      ],
+      "stamp_sec": 1788613828.8245547,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.4325871169567108,
+      "bbox_xyxy": [
+        173.01419067382812,
+        199.42218017578125,
+        392.3728332519531,
+        217.5733642578125
+      ],
+      "stamp_sec": 1788613828.8245547,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 5,
+      "class_name": "Pothole",
+      "confidence": 0.42504438757896423,
+      "bbox_xyxy": [
+        358.750732421875,
+        205.72628784179688,
+        395.56884765625,
+        218.60757446289062
+      ],
+      "stamp_sec": 1788613988.4447007,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.7540875673294067,
+      "bbox_xyxy": [
+        207.52381896972656,
+        201.68284606933594,
+        440.13427734375,
+        226.6422576904297
+      ],
+      "stamp_sec": 1788614031.5854597,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.47133147716522217,
+      "bbox_xyxy": [
+        254.106689453125,
+        191.35836791992188,
+        396.80926513671875,
+        207.55099487304688
+      ],
+      "stamp_sec": 1788614053.1564727,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.7795013785362244,
+      "bbox_xyxy": [
+        179.61325073242188,
+        205.231689453125,
+        460.2797546386719,
+        238.87527465820312
+      ],
+      "stamp_sec": 1788614057.4909577,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.36702409386634827,
+      "bbox_xyxy": [
+        267.28961181640625,
+        210.64108276367188,
+        530.0391235351562,
+        233.18850708007812
+      ],
+      "stamp_sec": 1788614074.7277217,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.598212480545044,
+      "bbox_xyxy": [
+        268.41180419921875,
+        200.42770385742188,
+        395.16375732421875,
+        211.40512084960938
+      ],
+      "stamp_sec": 1788614083.3628657,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 5,
+      "class_name": "Pothole",
+      "confidence": 0.6769094467163086,
+      "bbox_xyxy": [
+        220.26925659179688,
+        289.4952087402344,
+        258.6844787597656,
+        328.3761901855469
+      ],
+      "stamp_sec": 1788614096.3322277,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.7174590229988098,
+      "bbox_xyxy": [
+        166.8533935546875,
+        222.27134704589844,
+        467.3004150390625,
+        275.39208984375
+      ],
+      "stamp_sec": 1788614117.9030786,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 5,
+      "class_name": "Pothole",
+      "confidence": 0.3524130880832672,
+      "bbox_xyxy": [
+        328.9744873046875,
+        223.54672241210938,
+        352.3985595703125,
+        238.37380981445312
+      ],
+      "stamp_sec": 1788614126.5714576,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.407461553812027,
+      "bbox_xyxy": [
+        40.809478759765625,
+        211.0999755859375,
+        383.1095275878906,
+        236.56875610351562
+      ],
+      "stamp_sec": 1788614130.8722196,
+      "distance_m": null,
+      "path_intersection": null
+    },
+    {
+      "class_id": 6,
+      "class_name": "Speed-Bump",
+      "confidence": 0.4668102264404297,
+      "bbox_xyxy": [
+        308.2556457519531,
+        208.64080810546875,
+        454.4352722167969,
+        232.523681640625
+      ],
+      "stamp_sec": 1788614135.1722407,
+      "distance_m": null,
+      "path_intersection": null
+    }
+  ],
+  "sample_images": [
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0021.jpg",
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0027.jpg",
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0037.jpg",
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0039.jpg",
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0040.jpg",
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0041.jpg",
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0044.jpg",
+    "/smart_car_ws/src/perception/jetson_perception/reports/road_hazard_pt/detection_0046.jpg"
+  ]
+}

@@ -1,0 +1,33 @@
+/**:
+  ros__parameters:
+    # z HARITADAN okunur. RViz "2D Pose Estimate" z=0 yayinlar ve kovaryansta
+    # z (cov[14]) sifir kaldigi icin NDT'nin ndt_align aramasi z'yi HIC
+    # ARAMAZ -- yanlis z, align'in telafi edemeyecegi sabit bir hatadir.
+    # Eskiden burada tek bir sabit (map_z) vardi; bu haritada guzergah
+    # 22.9 m tirmandigi icin o yaklasim yolun %62'sinde 2 m'den fazla
+    # sapiyordu (2 m = resolution 2.0'da NDT'nin voxel arama yaricapi).
+    height_source: "map"        # "map" | "constant"
+
+    # Zemin izgarasinin kuruldugu bulut. Tam harita latched geldigi icin
+    # bir kez okunur; olculen maliyet 10.932.779 nokta -> 120.396 hucre,
+    # 0.43 s. Bellek darsa /map/downsampled_pointcloud_map kullanilabilir.
+    map_topic: "/map/pointcloud_map"
+
+    # Zemin, verilen pozun bu yaricapindaki hucre minimumlarinin medyani.
+    # Medyan tek tuk asagi kacak noktaya karsi dayanikli. Olculen dogruluk
+    # (LIO-SAM yorungesine karsi, 7 nokta): hatalarin cogu < 12 cm,
+    # en kotu -0.66 m (yamacta).
+    ground_search_radius: 5.0
+    ground_grid_size: 1.0
+
+    # base_link zemin hizasinda kabul edilir (URDF: velodyne base_link'in
+    # 1.8 m uzerinde). Farkli referans gerekirse buradan kaydirilir.
+    z_offset: 0.0
+
+    # YEDEK: harita henuz gelmediyse ya da o (x,y) cevresinde harita
+    # noktasi yoksa kullanilir ve WARN basilir. Sessizce yanlis z
+    # vermemesi icin 0.0; harita disi bir poz verildiginde uyari gorulur.
+    map_z: 0.0
+
+    # AUTO: RViz yaklasik pozunu NDT align ile iyilestir, sonra EKF'yi resetle.
+    initialize_method: 0

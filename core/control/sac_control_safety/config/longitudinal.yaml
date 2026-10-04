@@ -1,0 +1,17 @@
+longitudinal_controller:
+  ros__parameters:
+    command_topic: /control/controller_command
+    output_topic: /control/longitudinal_command
+    speed_topic: /vehicle/speed
+    command_timeout: 0.12
+    speed_timeout: 0.15
+    period: 0.02
+    kp: 0.15
+    ki: 0.05
+    brake_kp: 0.4
+    max_throttle: 0.30
+    max_brake: 1.0
+    max_accel: 0.5
+    max_decel: 1.5
+    stop_brake: 1.0
+    integral_limit: 2.0

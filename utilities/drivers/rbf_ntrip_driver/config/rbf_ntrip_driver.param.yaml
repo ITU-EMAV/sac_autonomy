@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    ntrip:
+      host: "ntrip.example.com"
+      user_name: "username"
+      password: "password"
+      mount_point: "MOUNTPOINT"
+      port: 2101
+      use_nav_sat_fix_init: false
+      nav_sat_fix_topic_name: "/sbg/ros/nav_sat_fix"
+      init_ntrip_location_lat: 41.102580 
+      init_ntrip_location_lon: 29.018032
+
+    serial_port:
+      publish_port_rtcm: false
+      name: "/dev/ttyUSB0"
+      baud_rate: 921600
+
+    rtcm_publisher:
+      publish_rtcm: true
+      rtcm_topic: "/ntrip_client/rtcm"
+      rtcm_frame_id: "rtcm"

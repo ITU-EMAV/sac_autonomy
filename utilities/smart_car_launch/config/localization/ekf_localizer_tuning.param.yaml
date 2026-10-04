@@ -1,0 +1,45 @@
+# EKF localizer — bu arac icin ayarlar
+# Apt config'inin (autoware_ekf_localizer 1.9.0) uzerine yuklenir.
+/**:
+  ros__parameters:
+    pose_measurement:
+      # 5 -> 3.
+      # pose_smoothing_steps, NDT pozunun olcum kovaryansini N KAT sisirir
+      # (ekf_module.cpp: pose_measurement_covariance(cov, smoothing_steps)),
+      # yani EKF NDT'ye N kat daha az guvenir.
+      #
+      # Belirti: ndt_failure_diag bag'inde saglikli surus boyunca NDT ile EKF
+      # arasinda SUREKLI ve TEK YONLU 1.3-2.0 derecelik yaw farki var (gurultu
+      # degil, bias). Bu fark NDT'nin her taramada bastan ~1.5 derece yanlis
+      # bir baslangic tahminiyle basladigi anlamina geliyor; saglikli surusteki
+      # 4-8 iterasyonun sebebi de bu (temiz bir tahminle 1-2 olmasi beklenir).
+      # 5 -> 3 EKF'in NDT duzeltmesini daha guclu almasini saglar.
+      #
+      # NOT: Bu dosyadaki en az kesin degisiklik. 1.5 derecelik biasin tek
+      # sebebinin bu oldugu KANITLANMADI (IMU->base_link ekstrinsigi veya
+      # jiroskop olcek hatasi da ayni belirtiyi verir). Belirti geri gelirse
+      # once burayi 5'e dondur.
+      pose_smoothing_steps: 3
+
+    twist_measurement:
+      # Smoothing gecikmesini buyutmeden, ayni EKF periyodunda gelen birden
+      # fazla twist olcumune kuyrukta yer ayir.
+      twist_smoothing_steps: 2
+      max_twist_queue_size: 10
+
+      # vehicle_twist_converter Float32'ye kendi saatiyle zaman damgasi
+      # basiyor (Float32'de header yok); kucuk bir gecikme telafisi.
+      twist_additional_delay: 0.0
+
+    gnss_measurement:
+      # GNSS (/sensing/gnss/gnss_pose_with_cov, 20 Hz) EKF'e NDT'den bagimsiz ikinci
+      # bir poz kaynagi olarak girer. Ayni EKF periyodunda (50 Hz) en fazla bir olcum
+      # gelir; kuyruk 4 yeterli. Kovaryansi gnss_poser'in verdigi RTK/fix kalitesinden
+      # alir, smoothing_steps bu kovaryansi N kat sisirir.
+      enable: true
+      # Yaw sadece cift anten heading'i varsa guvenilir; tek antende false kalmali.
+      use_yaw: false
+      gnss_additional_delay: 0.0
+      gnss_smoothing_steps: 2
+      max_gnss_queue_size: 4
+      gnss_gate_dist: 49.5
